@@ -2,64 +2,59 @@ package screens
 
 import (
 	"errors"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/filepicker"
+	"codeberg.org/JoaoGarcia/Mezzotone/internal/ui/components"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type clearErrorMsg struct{}
-
-func clearErrorAfter(t time.Duration) tea.Cmd {
-	return tea.Tick(t, func(_ time.Time) tea.Msg {
-		return clearErrorMsg{}
-	})
-}
-
 type ConvertImageMenuScreen struct {
-	filepicker   filepicker.Model
-	selectedFile string
-	err          error
+	fileInput components.FileInput
 }
 
-const FilePickerHeight = 20
+const FilePickerHeight = 10
 
 func NewConvertImageMenuScreen() ConvertImageMenuScreen {
-	fp := filepicker.New()
-	fp.AllowedTypes = []string{".png", ".jpg", ".jpeg", "", ".bmp", ".webp", ".tiff"}
-	fp.CurrentDirectory, _ = os.UserHomeDir()
-	fp.SetHeight(FilePickerHeight)
+	fp := components.NewFileInput(
+		FilePickerHeight,
+		[]string{".png", ".jpg", ".jpeg", "", ".bmp", ".webp", ".tiff"},
+	)
 
 	return ConvertImageMenuScreen{
-		filepicker: fp,
+		fileInput: fp,
 	}
 }
 
 func (m ConvertImageMenuScreen) Init() tea.Cmd {
-	return m.filepicker.Init()
+	return m.fileInput.FilePicker.Init()
 }
 
 func (m ConvertImageMenuScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg.(type) {
 	case tea.WindowSizeMsg:
-		m.filepicker.SetHeight(FilePickerHeight - 2)
-	case clearErrorMsg:
-		m.err = nil
+		m.fileInput.FilePicker.SetHeight(FilePickerHeight - 2)
+	case components.ClearErrorMsg:
+		m.fileInput.Err = nil
 	}
 
 	var cmd tea.Cmd
-	m.filepicker, cmd = m.filepicker.Update(msg)
+	m.fileInput.FilePicker, cmd = m.fileInput.FilePicker.Update(msg)
 
-	if didSelect, path := m.filepicker.DidSelectFile(msg); didSelect {
-		m.selectedFile = path
+	if didSelect, path := m.fileInput.FilePicker.DidSelectFile(msg); didSelect {
+		if !m.fileInput.FilePicker.FileAllowed {
+			m.fileInput.Err = errors.New("Selected file need to be an image.\nAllowed types: .png, .jpg, .jpeg, .bmp, .webp, .tiff")
+			m.fileInput.SelectedFile = ""
+			return m, tea.Batch(cmd, m.fileInput.ClearErrorAfter(2*time.Second))
+		} else {
+			m.fileInput.SelectedFile = path
+		}
 	}
 
-	if didSelect, path := m.filepicker.DidSelectDisabledFile(msg); didSelect {
-		m.err = errors.New(path + " is not valid.")
-		m.selectedFile = ""
-		return m, tea.Batch(cmd, clearErrorAfter(2*time.Second))
+	if didSelect, path := m.fileInput.FilePicker.DidSelectDisabledFile(msg); didSelect {
+		m.fileInput.Err = errors.New(path + " is not valid.")
+		m.fileInput.SelectedFile = ""
+		return m, tea.Batch(cmd, m.fileInput.ClearErrorAfter(2*time.Second))
 	}
 
 	return m, cmd
@@ -67,14 +62,13 @@ func (m ConvertImageMenuScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 
 func (m ConvertImageMenuScreen) View() string {
 	var s strings.Builder
-	s.WriteString("\n  ")
-	if m.err != nil {
-		s.WriteString(m.filepicker.Styles.DisabledFile.Render(m.err.Error()))
-	} else if m.selectedFile == "" {
-		s.WriteString("Pick a file:")
+	if m.fileInput.Err != nil {
+		s.WriteString("\n\n" + m.fileInput.Err.Error() + "\n\n")
 	} else {
-		s.WriteString("Selected file: " + m.filepicker.Styles.Selected.Render(m.selectedFile))
+		s.WriteString("\nCurrent Directory:  " + m.fileInput.FilePicker.CurrentDirectory)
+		s.WriteString("\n\nPick a file:")
 	}
-	s.WriteString("\n\n" + m.filepicker.View() + "\n")
+	s.WriteString("\n\n" + m.fileInput.FilePicker.View() + "\n")
+
 	return s.String()
 }
