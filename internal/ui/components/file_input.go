@@ -8,7 +8,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type ClearErrorMsg struct{} //FIXME this maybe could be separated if needed on other components
+// ClearErrorMsg TODO this maybe could be separated if needed on other components
+type ClearErrorMsg struct{}
 
 type FileInput struct {
 	FilePicker   filepicker.Model
