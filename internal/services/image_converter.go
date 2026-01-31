@@ -26,10 +26,6 @@ const unicodeRampDarkToBrightStr = "█▉▊▋▌▍▎▏▓▒░■□@&%$#
 const asciiRampBrightToDarkStr = " .`^,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
 const unicodeRampBrightToDarkStr = " '`^.\",!;:~-=+*#$%&@□■░▒▓▏▎▍▌▋▊▉█"
 
-type ConvertDoneMsg struct {
-	Err error
-}
-
 type ConvertedImageArray struct {
 	Cols       int
 	Rows       int
@@ -83,7 +79,14 @@ func ConvertImageToString(filePath string) (ConvertedImageArray, error) {
 
 	cols, rows := gridFromTextSize(inputImg, textSize, fontAspect)
 
-	//TODO if directionalRender is true apply Sobel per tile or pool full-res edges into the ASCII grid
+	directionalRenderAny, ok := Shared().Get("directionalRender")
+	if !ok || directionalRenderAny == nil {
+		return ConvertedImageArray{}, errors.New("useUnicode is nil")
+	}
+	directionalRender := directionalRenderAny.(bool)
+	if directionalRender {
+
+	}
 
 	splitImages, err := splitImage(textSize, fontAspect, inputImg, isDebugEnv)
 	if err != nil {
@@ -98,16 +101,25 @@ func ConvertImageToString(filePath string) (ConvertedImageArray, error) {
 	}
 	useUnicode := useUnicodeAny.(bool)
 
-	reverseCharsAny, ok := Shared().Get("useUnicode")
+	reverseCharsAny, ok := Shared().Get("reverseChars")
 	if !ok || reverseCharsAny == nil {
-		return ConvertedImageArray{}, errors.New("useUnicode is nil")
+		return ConvertedImageArray{}, errors.New("reverseChars is nil")
 	}
 	reverseChars := reverseCharsAny.(bool)
 
+	highContrastAny, ok := Shared().Get("highContrast")
+	if !ok || highContrastAny == nil {
+		return ConvertedImageArray{}, errors.New("highContrast is nil")
+	}
+	highContrast := highContrastAny.(bool)
+
 	var outputChars []rune
 	for i := 0; i < len(splitImages); i++ {
-		m := getMedianColor(splitImages[i])
-		outputChars = append(outputChars, getCharForRGBValue(m, useUnicode, reverseChars))
+		luminance := getMedianLuminance(splitImages[i])
+		if highContrast {
+			luminance = applyContrast(luminance, 1.7)
+		}
+		outputChars = append(outputChars, getCharForLuminanceValue(luminance, useUnicode, reverseChars))
 	}
 	_ = Logger().Info(fmt.Sprintf("Finished image conversion"))
 
@@ -116,7 +128,6 @@ func ConvertImageToString(filePath string) (ConvertedImageArray, error) {
 		Rows:       rows,
 		Characters: outputChars,
 	}, nil
-
 }
 
 func gridFromTextSize(img image.Image, textSize int, fontAspect float64) (cols, rows int) {
@@ -220,11 +231,11 @@ func saveImageToDebugDir(img image.Image, outputName string, subFolderName strin
 	return png.Encode(out, img)
 }
 
-func getMedianColor(img image.Image) color.NRGBA {
+func getMedianLuminance(img image.Image) float64 {
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w <= 0 || h <= 0 {
-		return color.NRGBA{}
+		return 0
 	}
 
 	rs := make([]uint8, 0, w*h)
@@ -245,12 +256,13 @@ func getMedianColor(img image.Image) color.NRGBA {
 		}
 	}
 
-	return color.NRGBA{
-		R: medianUint8(rs),
-		G: medianUint8(gs),
-		B: medianUint8(bs),
-		A: medianUint8(as),
-	}
+	R := float64(medianUint8(rs))
+	G := float64(medianUint8(gs))
+	B := float64(medianUint8(bs))
+
+	lumiance := 0.2126*R + 0.7152*G + 0.0722*B
+	//normalize to 0...1
+	return lumiance / 255.0
 }
 
 func medianUint8(v []uint8) uint8 {
@@ -269,52 +281,45 @@ func medianUint8(v []uint8) uint8 {
 	return uint8((uint16(v[m-1]) + uint16(v[m])) / 2)
 }
 
-func getCharForRGBValue(color color.NRGBA, useUnicode bool, reverseChars bool) rune {
-
-	var asciiRamp []rune
-	var unicodeRamp []rune
-
-	if reverseChars {
-		asciiRamp = []rune(asciiRampDarkToBrightStr)
-		unicodeRamp = []rune(unicodeRampDarkToBrightStr)
-	} else {
-		asciiRamp = []rune(asciiRampBrightToDarkStr)
-		unicodeRamp = []rune(unicodeRampBrightToDarkStr)
-	}
-
-	brightness := (0.2126 * float64(color.R)) + (0.7152 * float64(color.G)) + (0.0722 * float64(color.B))
-
-	var brightnessLevel float64
-	var rampLen int
-	var returnChar rune
-
+func getCharForLuminanceValue(luminance float64, useUnicode bool, reverseChars bool) rune {
+	var ramp []rune
 	if useUnicode {
-		rampLen = len(unicodeRamp)
-		brightnessLevel = 255.0 / float64(rampLen)
+		if reverseChars {
+			ramp = []rune(unicodeRampBrightToDarkStr)
+		} else {
+			ramp = []rune(unicodeRampDarkToBrightStr)
+		}
 	} else {
-		rampLen = len(asciiRamp)
-		brightnessLevel = 255.0 / float64(rampLen)
+		if reverseChars {
+			ramp = []rune(asciiRampBrightToDarkStr)
+		} else {
+			ramp = []rune(asciiRampDarkToBrightStr)
+		}
 	}
-	_ = Logger().Info(fmt.Sprintf("Ramp length: %d | Brightness Step: %.2f", rampLen, brightnessLevel))
 
-	charIndex := int(brightness / brightnessLevel)
-	if charIndex < 0 {
-		charIndex = 0
-	}
-	if charIndex >= rampLen {
-		charIndex = rampLen - 1
-	}
-	if useUnicode {
-		returnChar = unicodeRamp[charIndex]
-	} else {
-		returnChar = asciiRamp[charIndex]
-	}
+	luminance = clamp01(luminance)
+	index := int(luminance * float64(len(ramp)-1))
+
 	_ = Logger().Info(
 		fmt.Sprintf(
-			"brightness: %.2f | character: %s | median RGBA: %d %d %d %d | character index: %d",
-			brightness, string(returnChar), color.R, color.G, color.B, color.A, charIndex,
+			"brightness: %.2f | character: %s | character index: %d",
+			luminance, string(ramp[index]), index,
 		),
 	)
 
-	return returnChar
+	return ramp[index]
+}
+
+func clamp01(x float64) float64 {
+	if x < 0 {
+		return 0
+	}
+	if x > 1 {
+		return 1
+	}
+	return x
+}
+
+func applyContrast(l float64, factor float64) float64 {
+	return clamp01((l-0.5)*factor + 0.5)
 }

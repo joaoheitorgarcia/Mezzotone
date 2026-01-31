@@ -13,6 +13,12 @@ type ImagePreview struct {
 	loadingAnimation components.LoadingScreen
 	loading          bool
 	err              error
+	outputArray      services.ConvertedImageArray
+}
+
+type ConvertDoneMsg struct {
+	outputArray services.ConvertedImageArray
+	Err         error
 }
 
 func NewImagePreview() ImagePreview {
@@ -57,15 +63,14 @@ func (m ImagePreview) Init() tea.Cmd {
 func (m ImagePreview) Update(msg tea.Msg) (Screen, tea.Cmd) {
 	switch msg := msg.(type) {
 
-	case services.ConvertDoneMsg:
+	case ConvertDoneMsg:
 		m.loading = false
 		m.err = msg.Err
 		if msg.Err != nil {
 			_ = services.Logger().Error(msg.Err.Error())
 			return m, nil
 		}
-
-		//TODO: transition to the next screen (ASCII preview) if you have routing.
+		m.outputArray = msg.outputArray
 		return m, nil
 
 	default:
@@ -85,46 +90,47 @@ func (m ImagePreview) View() string {
 	if m.loading {
 		return m.loadingAnimation.Spinner.View()
 	}
-	return "Done!\n"
+
+	var outputBuilder strings.Builder
+	for i, r := range m.outputArray.Characters {
+		outputBuilder.WriteRune(r)
+		if m.outputArray.Cols > 0 && (i+1)%m.outputArray.Cols == 0 {
+			outputBuilder.WriteByte('\n')
+		}
+	}
+
+	return outputBuilder.String()
 }
 
 func convertImageCmd() tea.Cmd {
 	return func() tea.Msg {
 		selectedFileAny, ok := services.Shared().Get("selectedFile")
 		if !ok || selectedFileAny == nil {
-			return services.ConvertDoneMsg{Err: errors.New("selectedFile not set")}
+			return ConvertDoneMsg{Err: errors.New("selectedFile not set")}
 		}
 
 		selectedFile, ok := selectedFileAny.(string)
 		if !ok || selectedFile == "" {
-			return services.ConvertDoneMsg{Err: errors.New("selectedFile is not a string")}
+			return ConvertDoneMsg{Err: errors.New("selectedFile is not a string")}
 		}
 
 		//TODO: get this from user input
-		services.Shared().Set("textSize", 8)
+		services.Shared().Set("textSize", 12)
 		services.Shared().Set("fontAspect", 2)
-		services.Shared().Set("useUnicode", true)
+		services.Shared().Set("useUnicode", false)
 		services.Shared().Set("directionalRender", false)
-		services.Shared().Set("reverseChars", false) //TODO
+		services.Shared().Set("reverseChars", true)
+		services.Shared().Set("highContrast", false)
 
 		convertedImage, err := services.ConvertImageToString(selectedFile)
 		if err != nil {
-			return services.ConvertDoneMsg{Err: err}
-		}
-
-		var outputBuilder strings.Builder
-		for i, r := range convertedImage.Characters {
-			outputBuilder.WriteRune(r)
-			if convertedImage.Cols > 0 && (i+1)%convertedImage.Cols == 0 {
-				outputBuilder.WriteByte('\n')
+			return ConvertDoneMsg{
+				Err: err,
 			}
 		}
-		_ = services.Logger().Info(outputBuilder.String())
 
-		//TODO return this and updated View
-
-		return services.ConvertDoneMsg{
-			Err: err,
+		return ConvertDoneMsg{
+			outputArray: convertedImage,
 		}
 	}
 }
