@@ -115,12 +115,13 @@ func convertImageCmd() tea.Cmd {
 		}
 
 		//TODO: get this from user input
-		services.Shared().Set("textSize", 2)
+		services.Shared().Set("textSize", 10)
 		services.Shared().Set("fontAspect", 2.3)
-		services.Shared().Set("useUnicode", false)
-		services.Shared().Set("directionalRender", false)
+		services.Shared().Set("useUnicode", true)
+		services.Shared().Set("directionalRender", true)
+		services.Shared().Set("edgeThresholdPercentile", 0.6)
 		services.Shared().Set("reverseChars", true)
-		services.Shared().Set("highContrast", true)
+		services.Shared().Set("highContrast", false)
 
 		convertedImage, err := services.ConvertImageToString(selectedFile)
 		if err != nil {

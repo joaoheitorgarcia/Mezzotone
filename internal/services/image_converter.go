@@ -8,6 +8,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"math"
 	"os"
 
 	_ "golang.org/x/image/bmp"
@@ -15,11 +16,16 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-const asciiRampDarkToBrightStr = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,^`. "
-const unicodeRampDarkToBrightStr = "█▉▊▋▌▍▎▏▓▒░■□@&%$#*+=-~:;!,\".^`' "
+// EdgeInfo Struct to store edge info from Sobel filter
+type EdgeInfo struct {
+	Magnitude float64
+	Angle     float64
+}
 
-const asciiRampBrightToDarkStr = " .`^,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
-const unicodeRampBrightToDarkStr = " '`^.\",!;:~-=+*#$%&@□■░▒▓▏▎▍▌▋▊▉█"
+const asciiRampDarkToBrightStr = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjtf()1{}[]?_+~<>i!lI;:,^`. "
+const unicodeRampDarkToBrightStr = "█▓▒░■□@&%$#*+=~:;!,\".^`' "
+const asciiRampBrightToDarkStr = " .`^,:;Il!i><~+_?][}{1)(ftjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
+const unicodeRampBrightToDarkStr = " '`^.\",!;:~=+*#$%&@□■░▒▓█"
 
 /*
 TODO: If unicode is true, you can offer multiple ramps (style presets) for the user to choose from.
@@ -79,6 +85,14 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 
 	// Compute grid resolution (cols x rows) based on image size + character cell size.
 	cols, rows := getColsAndRows(inputImg, textSize, fontAspect)
+	cellWidth := float64(inputImg.Bounds().Dx()) / float64(cols)
+	cellHeight := float64(inputImg.Bounds().Dy()) / float64(rows)
+	if cellWidth <= 0 {
+		cellWidth = 1
+	}
+	if cellHeight <= 0 {
+		cellHeight = 1
+	}
 
 	outputChars = make([][]rune, rows)
 	for r := 0; r < rows; r++ {
@@ -87,26 +101,32 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 
 	// Build a luminance grid (rows x cols) where each cell is 0..1.
 	// Each cell luminance is computed by averaging pixels in the corresponding image region.
-	lumaGrid, err := buildLuminanceGrid(inputImg, cols, rows, highContrast)
+	luminanceGrid, err := buildLuminanceGrid(inputImg, cols, rows, highContrast)
 	if err != nil {
 		return outputChars, err
 	}
 	_ = Logger().Info(fmt.Sprintf("Successfully Build LumaGrid for %s", filePath))
 
 	// directionalRender: optional Edge Awareness.
-	// Derive edge magnitude/orientation from lumaGrid and choose glyphs accordingly.
+	// Derive edge magnitude/orientation from luminanceGrid and choose glyphs accordingly.
 	directionalRenderAny, ok := Shared().Get("directionalRender")
 	if !ok || directionalRenderAny == nil {
 		return outputChars, errors.New("directionalRender is nil")
 	}
 	directionalRender := directionalRenderAny.(bool)
+	edgeThreshold := 0.0
+	edgeInfo := make([][]EdgeInfo, 0)
 	if directionalRender {
-		// TODO: apply Sobel filter on lumaGrid (operate on the *grid*, not original pixels)
-		// Steps (high level):
-		// 1) compute Gx, Gy per cell (skip borders)
-		// 2) magnitude = sqrt(Gx*Gx + Gy*Gy) normalized
-		// 3) orientation = atan2(Gy, Gx)
-		// 4) map orientation + magnitude to a directional glyph set
+		edgeThresholdPercentile := 0.6
+		if edgeThresholdPercentileAny, ok := Shared().Get("edgeThresholdPercentile"); ok && edgeThresholdPercentileAny != nil {
+			if edgeThresholdPercentileVal, ok := edgeThresholdPercentileAny.(float64); ok {
+				edgeThresholdPercentile = clamp01(edgeThresholdPercentileVal)
+			}
+		}
+		edgeThreshold = edgeThresholdPercentile
+
+		dogGrid := differenceOfGaussiansGrid(luminanceGrid, 0.5, 1.0)
+		edgeInfo = applySobelFilter(dogGrid, cellWidth, cellHeight)
 	}
 
 	_ = Logger().Info(fmt.Sprintf("Beginning image conversion"))
@@ -126,10 +146,18 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 	reverseChars := reverseCharsAny.(bool)
 
 	// Convert each luminance cell to a glyph using the chosen ramp.
-	// lumaGrid indices are [row][col] matching outputChars.
-	for i := 0; i < len(lumaGrid); i++ {
-		for j := 0; j < len(lumaGrid[i]); j++ {
-			outputChars[i][j] = getCharForLuminanceValue(lumaGrid[i][j], useUnicode, reverseChars)
+	// indices are [row][col] matching outputChars.
+	for i := 0; i < len(luminanceGrid); i++ {
+		for j := 0; j < len(luminanceGrid[i]); j++ {
+			//if directionalRender true and manging surpasses threshold replace with directional char
+			if directionalRender && edgeInfo[i][j].Magnitude > edgeThreshold {
+				outputChars[i][j] = getEdgeRuneFromGradient(edgeInfo[i][j], useUnicode)
+				if outputChars[i][j] == ' ' {
+					outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], edgeInfo, useUnicode, reverseChars)
+				}
+			} else {
+				outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], edgeInfo, useUnicode, reverseChars)
+			}
 		}
 	}
 
@@ -137,7 +165,7 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 	return outputChars, nil
 }
 
-//Calculates Columns and Rows for given TextSize and FontAspect
+// Calculates Columns and Rows for given TextSize and FontAspect
 func getColsAndRows(img image.Image, textSize int, fontAspect float64) (cols, rows int) {
 	b := img.Bounds()
 	imgW, imgH := b.Dx(), b.Dy()
@@ -164,7 +192,7 @@ func getColsAndRows(img image.Image, textSize int, fontAspect float64) (cols, ro
 	return cols, rows
 }
 
-//Builds a grid of averaged luminance values in [0..1].
+// Builds a grid of averaged luminance values in [0..1].
 func buildLuminanceGrid(inputImg image.Image, cols, rows int, highContrast bool) ([][]float64, error) {
 
 	imgBounds := inputImg.Bounds()
@@ -259,6 +287,7 @@ func buildLuminanceGrid(inputImg image.Image, cols, rows int, highContrast bool)
 
 /*
 Calculates luminance from rgb values and normalizes them from 0..255 into 0..1
+
 	Uses standard relative luminance weights (Rec.709 / sRGB), where green contributes the most to perceived brightness
 */
 func calculateLuminance(red uint8, green uint8, blue uint8) float64 {
@@ -267,7 +296,7 @@ func calculateLuminance(red uint8, green uint8, blue uint8) float64 {
 }
 
 // Get the rune correspondent to luminance in selected ramp
-func getCharForLuminanceValue(luminance float64, useUnicode bool, reverseChars bool) rune {
+func getRuneForLuminanceValue(luminance float64, edgeInfo [][]EdgeInfo, useUnicode bool, reverseChars bool) rune {
 	var ramp []rune
 	if useUnicode {
 		if reverseChars {
@@ -311,4 +340,255 @@ func clamp01(x float64) float64 {
 // Applies contrast to lumiance levels with contrast curve at 0.5
 func applyContrast(l float64, factor float64) float64 {
 	return clamp01((l-0.5)*factor + 0.5)
+}
+
+/*
+Applies Sobel filter to lumaGrid
+
+	Searches for biggest Change in luminance in adjacent grid values and calculates magnitude and angle of the change
+	Returns EdgeInfo grid with normalized values
+
+Ref: https://stackoverflow.com/questions/17815687/image-processing-implementing-sobel-filter
+*/
+func applySobelFilter(luminanceGrid [][]float64, cellWidth, cellHeight float64) [][]EdgeInfo {
+	rows := len(luminanceGrid)
+	if rows == 0 {
+		return nil
+	}
+	cols := len(luminanceGrid[0])
+	if cols == 0 {
+		return nil
+	}
+
+	edgeInfo := make([][]EdgeInfo, rows)
+	for y := 0; y < rows; y++ {
+		edgeInfo[y] = make([]EdgeInfo, cols)
+	}
+
+	sobelX := [][]int{
+		{-1, 0, 1},
+		{-2, 0, 2},
+		{-1, 0, 1},
+	}
+	sobelY := [][]int{
+		{-1, -2, -1},
+		{0, 0, 0},
+		{1, 2, 1},
+	}
+
+	//store highest value for percentile normalization
+	var highestMagnitude float64 = 0
+	invCellWidth := 1.0
+	invCellHeight := 1.0
+	if cellWidth > 0 {
+		invCellWidth = 1.0 / cellWidth
+	}
+	if cellHeight > 0 {
+		invCellHeight = 1.0 / cellHeight
+	}
+
+	for y := 1; y < rows-1; y++ {
+		for x := 1; x < cols-1; x++ {
+
+			Gx :=
+				(float64(sobelX[0][0]) * luminanceGrid[y-1][x-1]) +
+					(float64(sobelX[0][1]) * luminanceGrid[y-1][x]) +
+					(float64(sobelX[0][2]) * luminanceGrid[y-1][x+1]) +
+					(float64(sobelX[1][0]) * luminanceGrid[y][x-1]) +
+					(float64(sobelX[1][1]) * luminanceGrid[y][x]) +
+					(float64(sobelX[1][2]) * luminanceGrid[y][x+1]) +
+					(float64(sobelX[2][0]) * luminanceGrid[y+1][x-1]) +
+					(float64(sobelX[2][1]) * luminanceGrid[y+1][x]) +
+					(float64(sobelX[2][2]) * luminanceGrid[y+1][x+1])
+
+			Gy :=
+				(float64(sobelY[0][0]) * luminanceGrid[y-1][x-1]) +
+					(float64(sobelY[0][1]) * luminanceGrid[y-1][x]) +
+					(float64(sobelY[0][2]) * luminanceGrid[y-1][x+1]) +
+					(float64(sobelY[1][0]) * luminanceGrid[y][x-1]) +
+					(float64(sobelY[1][1]) * luminanceGrid[y][x]) +
+					(float64(sobelY[1][2]) * luminanceGrid[y][x+1]) +
+					(float64(sobelY[2][0]) * luminanceGrid[y+1][x-1]) +
+					(float64(sobelY[2][1]) * luminanceGrid[y+1][x]) +
+					(float64(sobelY[2][2]) * luminanceGrid[y+1][x+1])
+
+			Gx = Gx * invCellWidth
+			Gy = Gy * invCellHeight
+			magnitude := math.Sqrt(Gx*Gx + Gy*Gy)
+			angle := math.Atan2(Gy, Gx)
+
+			edgeInfo[y][x] = EdgeInfo{
+				Magnitude: magnitude,
+				Angle:     angle,
+			}
+
+			if magnitude > highestMagnitude {
+				highestMagnitude = magnitude
+			}
+		}
+	}
+
+	if highestMagnitude < 0.01 {
+		highestMagnitude = 0.01
+	}
+
+	//normalize Values to 0..1
+	for y := 0; y < len(edgeInfo); y++ {
+		for x := 0; x < len(edgeInfo[y]); x++ {
+			edgeInfo[y][x].Magnitude = edgeInfo[y][x].Magnitude / highestMagnitude
+		}
+	}
+	_ = Logger().Info(fmt.Sprintf("Applied Sobel filter, highestMagnitude %f", highestMagnitude))
+
+	return edgeInfo
+}
+
+// Get Rune if directionalRender is true intead of using luminance value
+func getEdgeRuneFromGradient(edge EdgeInfo, useUnicode bool) rune {
+	// Sobel angle is gradient direction;
+	// edge orientation is perpendicular.
+	angle := edge.Angle + (math.Pi / 2)
+	if angle < 0 {
+		angle += 2 * math.Pi
+	}
+
+	// Normalize into 0..Pi (edges are symmetric — 0 and Pi are the same edge direction)
+	if angle >= math.Pi {
+		angle -= math.Pi
+	}
+
+	if useUnicode {
+		switch {
+		case angle < math.Pi/8 || angle >= 7*math.Pi/8:
+			return '─'
+		case angle < 3*math.Pi/8:
+			return '╲'
+		case angle < 5*math.Pi/8:
+			return '│'
+		default:
+			return '╱'
+		}
+	}
+
+	switch {
+	case angle < math.Pi/8 || angle >= 7*math.Pi/8:
+		return '-'
+	case angle < 3*math.Pi/8:
+		return '\\'
+	case angle < 5*math.Pi/8:
+		return '|'
+	default:
+		return '/'
+	}
+}
+
+// Apply difference fo Gaussians to help with edge detections
+func differenceOfGaussiansGrid(luminanceGrid [][]float64, sigma1, sigma2 float64) [][]float64 {
+	rows := len(luminanceGrid)
+	if rows == 0 {
+		return nil
+	}
+	cols := len(luminanceGrid[0])
+	if cols == 0 {
+		return nil
+	}
+
+	if sigma1 <= 0 {
+		sigma1 = 0.6
+	}
+	if sigma2 <= sigma1 {
+		sigma2 = sigma1 * 2
+	}
+
+	clampInt := func(x, lo, hi int) int {
+		if x < lo {
+			return lo
+		}
+		if x > hi {
+			return hi
+		}
+		return x
+	}
+
+	gaussianKernel1D := func(sigma float64) ([]float64, int) {
+		if sigma <= 0 {
+			return []float64{1}, 0
+		}
+		radius := int(math.Ceil(3 * sigma))
+		size := 2*radius + 1
+
+		k := make([]float64, size)
+		var sum float64
+		twoSigma2 := 2 * sigma * sigma
+
+		for i := -radius; i <= radius; i++ {
+			x := float64(i)
+			v := math.Exp(-(x * x) / twoSigma2)
+			k[i+radius] = v
+			sum += v
+		}
+
+		if sum < 1e-12 {
+			sum = 1e-12
+		}
+		for i := range k {
+			k[i] /= sum
+		}
+
+		return k, radius
+	}
+
+	gaussianBlur := func(grid [][]float64, sigma float64) [][]float64 {
+		k, r := gaussianKernel1D(sigma)
+
+		// horizontal pass
+		tmp := make([][]float64, rows)
+		for y := 0; y < rows; y++ {
+			tmp[y] = make([]float64, cols)
+			for x := 0; x < cols; x++ {
+				sum := 0.0
+				for i := -r; i <= r; i++ {
+					xx := clampInt(x+i, 0, cols-1)
+					sum += grid[y][xx] * k[i+r]
+				}
+				tmp[y][x] = sum
+			}
+		}
+
+		// vertical pass
+		out := make([][]float64, rows)
+		for y := 0; y < rows; y++ {
+			out[y] = make([]float64, cols)
+			for x := 0; x < cols; x++ {
+				sum := 0.0
+				for i := -r; i <= r; i++ {
+					yy := clampInt(y+i, 0, rows-1)
+					sum += tmp[yy][x] * k[i+r]
+				}
+				out[y][x] = sum
+			}
+		}
+
+		return out
+	}
+
+	// compute DoG = blur(sigma1) - blur(sigma2)
+	g1 := gaussianBlur(luminanceGrid, sigma1)
+	g2 := gaussianBlur(luminanceGrid, sigma2)
+
+	dog := make([][]float64, rows)
+	var maxAbs float64
+
+	for y := 0; y < rows; y++ {
+		dog[y] = make([]float64, cols)
+		for x := 0; x < cols; x++ {
+			v := g1[y][x] - g2[y][x]
+			dog[y][x] = v
+			av := math.Abs(v)
+			if av > maxAbs {
+				maxAbs = av
+			}
+		}
+	}
+	return dog
 }
