@@ -22,19 +22,21 @@ type EdgeInfo struct {
 	Angle     float64
 }
 
+// Dark to Bright
 const asciiRampDarkToBrightStr = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjtf()1{}[]?_+~<>i!lI;:,^`. "
 const unicodeRampDarkToBrightStr = "█▓▒░■□@&%$#*+=~:;!,\".^`' "
+const dotsRampDarkToBrightStr = "●∙•· "
+const rectanglesRampDarkToBrightStr = "█▓▒░ "
+const barsRampDarkToBrightStr = "█▇▆▅▄▃▂▁ "
+const loadingRampDarkToBrightStr = "⣿⣷⣧⣇⣆⣄⣀ "
+
+// Bright to Dark
 const asciiRampBrightToDarkStr = " .`^,:;Il!i><~+_?][}{1)(ftjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
 const unicodeRampBrightToDarkStr = " '`^.\",!;:~=+*#$%&@□■░▒▓█"
-
-/*
-TODO: If unicode is true, you can offer multiple ramps (style presets) for the user to choose from.
-Examples:
-	█▇▆▅▄▃▂▁ ▁▂▃▄▅▆▇█
-	█▓▒░ ░▒▓█
-	⣿⣷⣧⣇⣆⣄⣀ ⣀⣄⣆⣇⣧⣷⣿
-	●∙•·  ·•∙●
-*/
+const dotsRampBrightToDarkStr = " ·•∙●"
+const rectanglesRampBrightToDarkStr = " ░▒▓█"
+const barsRampBrightToDarkStr = " ▁▂▃▄▅▆▇█"
+const loadingRampBrightToDarkStr = " ⣀⣄⣆⣇⣧⣷⣿"
 
 func ConvertImageToString(filePath string) ([][]rune, error) {
 	var outputChars [][]rune
@@ -131,12 +133,11 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 
 	_ = Logger().Info(fmt.Sprintf("Beginning image conversion"))
 
-	// useUnicode: pick between ASCII ramps and Unicode ramps.
-	useUnicodeAny, ok := Shared().Get("useUnicode")
-	if !ok || useUnicodeAny == nil {
-		return outputChars, errors.New("useUnicode is nil")
+	runeModeAny, ok := Shared().Get("runeMode")
+	if !ok || runeModeAny == nil {
+		return outputChars, errors.New("runeMode is nil")
 	}
-	useUnicode := useUnicodeAny.(bool)
+	runeMode := runeModeAny.(string)
 
 	// reverseChars: invert ramp direction (useful for dark terminals / preference).
 	reverseCharsAny, ok := Shared().Get("reverseChars")
@@ -151,12 +152,12 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 		for j := 0; j < len(luminanceGrid[i]); j++ {
 			//if directionalRender true and manging surpasses threshold replace with directional char
 			if directionalRender && edgeInfo[i][j].Magnitude > edgeThreshold {
-				outputChars[i][j] = getEdgeRuneFromGradient(edgeInfo[i][j], useUnicode)
+				outputChars[i][j] = getEdgeRuneFromGradient(edgeInfo[i][j], runeMode)
 				if outputChars[i][j] == ' ' {
-					outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], edgeInfo, useUnicode, reverseChars)
+					outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], runeMode, reverseChars)
 				}
 			} else {
-				outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], edgeInfo, useUnicode, reverseChars)
+				outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], runeMode, reverseChars)
 			}
 		}
 	}
@@ -296,20 +297,48 @@ func calculateLuminance(red uint8, green uint8, blue uint8) float64 {
 }
 
 // Get the rune correspondent to luminance in selected ramp
-func getRuneForLuminanceValue(luminance float64, edgeInfo [][]EdgeInfo, useUnicode bool, reverseChars bool) rune {
+func getRuneForLuminanceValue(luminance float64, runeMode string, reverseChars bool) rune {
 	var ramp []rune
-	if useUnicode {
+
+	switch runeMode {
+	case "UNICODE":
 		if reverseChars {
 			ramp = []rune(unicodeRampBrightToDarkStr)
 		} else {
 			ramp = []rune(unicodeRampDarkToBrightStr)
 		}
-	} else {
+	case "DOTS":
+		if reverseChars {
+			ramp = []rune(dotsRampBrightToDarkStr)
+		} else {
+			ramp = []rune(dotsRampDarkToBrightStr)
+		}
+	case "RECTANGLES":
+		if reverseChars {
+			ramp = []rune(rectanglesRampBrightToDarkStr)
+		} else {
+			ramp = []rune(rectanglesRampDarkToBrightStr)
+		}
+	case "BARS":
+		if reverseChars {
+			ramp = []rune(barsRampBrightToDarkStr)
+		} else {
+			ramp = []rune(barsRampDarkToBrightStr)
+		}
+	case "LOADING":
+		if reverseChars {
+			ramp = []rune(loadingRampBrightToDarkStr)
+		} else {
+			ramp = []rune(loadingRampDarkToBrightStr)
+		}
+	default:
+	case "ASCII":
 		if reverseChars {
 			ramp = []rune(asciiRampBrightToDarkStr)
 		} else {
 			ramp = []rune(asciiRampDarkToBrightStr)
 		}
+
 	}
 
 	// Map luminance to an index in the ramp:
@@ -444,7 +473,7 @@ func applySobelFilter(luminanceGrid [][]float64, cellWidth, cellHeight float64) 
 }
 
 // Get Rune if directionalRender is true intead of using luminance value
-func getEdgeRuneFromGradient(edge EdgeInfo, useUnicode bool) rune {
+func getEdgeRuneFromGradient(edge EdgeInfo, runeMode string) rune {
 	// Sobel angle is gradient direction;
 	// edge orientation is perpendicular.
 	angle := edge.Angle + (math.Pi / 2)
@@ -457,7 +486,7 @@ func getEdgeRuneFromGradient(edge EdgeInfo, useUnicode bool) rune {
 		angle -= math.Pi
 	}
 
-	if useUnicode {
+	if runeMode != "ASCII" {
 		switch {
 		case angle < math.Pi/8 || angle >= 7*math.Pi/8:
 			return '─'
