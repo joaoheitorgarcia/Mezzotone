@@ -13,7 +13,6 @@ import (
 func main() {
 	debug := flag.Bool("debug", false, "enable debug logging")
 	flag.Parse()
-	services.Shared().Set("debug", *debug)
 	if *debug {
 		err := services.InitLogger("logs.log")
 		if err != nil {

@@ -214,9 +214,9 @@ func (m *SettingsPanel) toggleBool() {
 	}
 	switch strings.ToLower(strings.TrimSpace(it.Value)) {
 	case "true":
-		it.Value = "false"
+		it.Value = "FALSE"
 	default:
-		it.Value = "true"
+		it.Value = "TRUE"
 	}
 }
 
@@ -258,7 +258,7 @@ func validateAndSet(it *SettingItem, raw string) error {
 			it.Value = normalizeBool(raw)
 			return nil
 		default:
-			return fmt.Errorf("must be true/false")
+			return fmt.Errorf("must be TRUE/FALSE")
 		}
 
 	case TypeEnum:
@@ -278,7 +278,7 @@ func validateAndSet(it *SettingItem, raw string) error {
 
 func normalizeBool(s string) string {
 	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "1", "yes", "on", "true":
+	case "true":
 		return "true"
 	default:
 		return "false"

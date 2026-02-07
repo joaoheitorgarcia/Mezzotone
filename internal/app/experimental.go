@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"codeberg.org/JoaoGarcia/Mezzotone/internal/services"
@@ -15,13 +16,15 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// TODO REORDER Layout IF TERMINAL width < height
+
 type MezzotoneModel struct {
 	filePicker   filepicker.Model
 	selectedFile string
 
-	renderView    viewport.Model
-	leftColumn    viewport.Model
-	renderOptions ui.SettingsPanel
+	renderView     viewport.Model
+	leftColumn     viewport.Model
+	renderSettings ui.SettingsPanel
 
 	style styleVariables
 
@@ -38,7 +41,7 @@ type styleVariables struct {
 	leftColumnWidth int
 }
 
-var optionsTableRowSize int
+var renderSettingsItemsSize int
 
 const (
 	filePickerMenu = iota
@@ -52,18 +55,18 @@ func NewMezzotoneModel() MezzotoneModel {
 	}
 
 	runeMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS", "LOADING"}
-	renderOptionItems := []ui.SettingItem{
+	renderSettingsItems := []ui.SettingItem{
 		{Label: "Text Size", Key: "textSize", Type: ui.TypeInt, Value: "10"},
 		{Label: "Font Aspect", Key: "fontAspect", Type: ui.TypeFloat, Value: "2.3"},
-		{Label: "Directional Render", Key: "directionalRender", Type: ui.TypeBool, Value: "false"},
-		{Label: "Edge Threshold Percentile", Key: "edgeThresholdPercentile", Type: ui.TypeFloat, Value: "0.6"},
-		{Label: "Reverse Chars", Key: "reverseChars", Type: ui.TypeBool, Value: "true"},
-		{Label: "High Contrast", Key: "highContrast", Type: ui.TypeBool, Value: "true"},
+		{Label: "Directional Render", Key: "directionalRender", Type: ui.TypeBool, Value: "FALSE"},
+		{Label: "Edge Threshold", Key: "edgeThresholdPercentile", Type: ui.TypeFloat, Value: "0.6"},
+		{Label: "Reverse Chars", Key: "reverseChars", Type: ui.TypeBool, Value: "TRUE"},
+		{Label: "High Contrast", Key: "highContrast", Type: ui.TypeBool, Value: "TRUE"},
 		{Label: "Rune Mode", Key: "runeMode", Type: ui.TypeEnum, Value: "ASCII", Enum: runeMode},
 	}
-	optionsTableRowSize = len(renderOptionItems)
-	renderOptionsTable := ui.NewSettingsPanel("Render Options", renderOptionItems)
-	renderOptionsTable.ClearActive()
+	renderSettingsItemsSize = len(renderSettingsItems)
+	renderSettingsModel := ui.NewSettingsPanel("Render Options", renderSettingsItems)
+	renderSettingsModel.ClearActive()
 
 	fp := filepicker.New()
 	fp.AllowedTypes = []string{".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff"}
@@ -89,7 +92,7 @@ func NewMezzotoneModel() MezzotoneModel {
 		renderView:        renderView,
 		style:             windowStyles,
 		leftColumn:        leftColumn,
-		renderOptions:     renderOptionsTable,
+		renderSettings:    renderSettingsModel,
 		currentActiveMenu: filePickerMenu,
 	}
 }
@@ -113,10 +116,10 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.style.leftColumnWidth = m.width / 7 * 2
 
-		m.renderOptions.SetWidth(m.style.leftColumnWidth)
-		m.renderOptions.SetHeight(optionsTableRowSize)
+		m.renderSettings.SetWidth(m.style.leftColumnWidth)
+		m.renderSettings.SetHeight(renderSettingsItemsSize)
 
-		computedFilePickerHeight := m.renderView.Height - (optionsTableRowSize + 4 /*renderOptions header and end*/) - m.style.windowMargin*2 - 2 //inputFile Title
+		computedFilePickerHeight := m.renderView.Height - (renderSettingsItemsSize + 4 /*renderSettings header and end*/) - m.style.windowMargin*2 - 2 //inputFile Title
 		m.filePicker.SetHeight(computedFilePickerHeight)
 
 		return m, nil
@@ -130,16 +133,36 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentActiveMenu == filePickerMenu {
 				//TODO ask for confimation
 				return m, tea.Quit
-			} else if m.currentActiveMenu == renderOptionsMenu {
-				if !m.renderOptions.Editing {
+			}
+			if m.currentActiveMenu == renderOptionsMenu {
+				if !m.renderSettings.Editing {
 					m.currentActiveMenu--
-					m.renderOptions.ClearActive()
+					m.renderSettings.ClearActive()
 				}
+				return m, cmd
+			}
+			if m.currentActiveMenu == renderViewText {
+				m.currentActiveMenu--
+				return m, cmd
 			}
 
 		case "enter":
 			if m.currentActiveMenu == filePickerMenu {
-				m.renderOptions.SetActive(0)
+				m.renderSettings.SetActive(0)
+			}
+			if m.currentActiveMenu == renderOptionsMenu {
+				if !m.renderSettings.Editing && m.renderSettings.Confirm {
+					m.currentActiveMenu++
+
+					normalizedOptions := normalizeRenderOptionsForService(m.renderSettings.Items)
+					runeArray, err := services.ConvertImageToString(m.selectedFile, normalizedOptions)
+					if err != nil {
+						//TODO HAndle this
+					}
+					_ = services.Logger().Info(fmt.Sprintf(services.ImageRuneArrayIntoString(runeArray)))
+					m.renderView.SetContent(services.ImageRuneArrayIntoString(runeArray))
+					return m, cmd
+				}
 			}
 		}
 	}
@@ -160,15 +183,17 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedFile = ""
 			_ = services.Logger().Info(fmt.Sprintf("Tried Selecting File: %s", path))
 		}
-	} else if m.currentActiveMenu == renderOptionsMenu {
-		m.renderOptions, cmd = m.renderOptions.Update(msg)
-		cmds = append(cmds, cmd)
+	}
+	if m.currentActiveMenu == renderOptionsMenu {
+		m.renderSettings, cmd = m.renderSettings.Update(msg)
+		return m, cmd
+	}
+	if m.currentActiveMenu == renderViewText {
+		m.renderView, cmd = m.renderView.Update(msg)
+		return m, cmd
 	}
 
-	m.renderView, cmd = m.renderView.Update(msg)
-	cmds = append(cmds, cmd)
-
-	return m, tea.Batch(cmds...)
+	return m, cmd
 }
 
 func (m MezzotoneModel) View() string {
@@ -182,7 +207,7 @@ func (m MezzotoneModel) View() string {
 	fpView := truncateLinesANSI(m.filePicker.View(), innerW)
 	filePickerRender := filePickerStyle.Render( /*filePickerTitleRender + "\n\n" +*/ fpView)
 
-	lefColumnRender := lipgloss.JoinVertical(lipgloss.Left, filePickerRender, m.renderOptions.View())
+	lefColumnRender := lipgloss.JoinVertical(lipgloss.Left, filePickerRender, m.renderSettings.View())
 
 	renderViewStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder())
@@ -201,4 +226,41 @@ func truncateLinesANSI(s string, maxWidth int) string {
 		lines[i] = ansi.Truncate(lines[i], maxWidth, "…")
 	}
 	return strings.Join(lines, "\n")
+}
+
+func normalizeRenderOptionsForService(settingsValues []ui.SettingItem) services.RenderOptions {
+	var textSize int
+	var fontAspect, edgeThreshold float64
+	var directionalRender, reverseChars, highContrast bool
+	var runeMode string
+
+	for _, item := range settingsValues {
+		switch item.Key {
+		case "textSize":
+			textSize, _ = strconv.Atoi(item.Value)
+
+		case "fontAspect":
+			edgeThreshold, _ = strconv.ParseFloat(item.Value, 2)
+
+		case "edgeThreshold":
+			edgeThreshold, _ = strconv.ParseFloat(item.Value, 2)
+
+		case "directionalRender":
+			directionalRender, _ = strconv.ParseBool(item.Value)
+
+		case "reverseChars":
+			reverseChars, _ = strconv.ParseBool(item.Value)
+
+		case "highContrast":
+			highContrast, _ = strconv.ParseBool(item.Value)
+
+		case "runeMode":
+			runeMode = item.Value
+		}
+	}
+	options, err := services.NewRenderOptions(textSize, fontAspect, directionalRender, edgeThreshold, reverseChars, highContrast, runeMode)
+	if err != nil {
+		//TODO render Error and go back to renderOptionsMenu
+	}
+	return options
 }

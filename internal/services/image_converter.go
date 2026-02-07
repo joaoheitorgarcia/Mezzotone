@@ -1,8 +1,9 @@
 package services
 
 import (
-	"errors"
 	"fmt"
+	"slices"
+
 	"image"
 	"image/color"
 	_ "image/gif"
@@ -16,10 +17,50 @@ import (
 	_ "golang.org/x/image/webp"
 )
 
-// EdgeInfo Struct to store edge info from Sobel filter
-type EdgeInfo struct {
+// edgeInfo Struct to store edge info from Sobel filter
+type edgeInfo struct {
 	Magnitude float64
 	Angle     float64
+}
+
+type RenderOptions struct {
+	// textSize: roughly controls how many pixels map to one character horizontally.
+	textSize int
+	// fontAspect: terminal characters are typically taller than they are wide, vertical cell size is textSize * fontAspect.
+	fontAspect float64
+	// directionalRender: optional Edge Awareness. Derive edge magnitude/orientation from luminanceGrid and choose glyphs accordingly.
+	directionalRender bool
+	edgeThreshold     float64
+	// reverseChars: invert ramp direction (useful for dark terminals / preference).
+	reverseChars bool
+	// highContrast: optional contrast curve applied after cell luminance averaging.
+	highContrast bool
+	runeMode     string
+}
+
+func NewRenderOptions(
+	textSize int,
+	fontAspect float64,
+	directionalRender bool,
+	edgeThreshold float64,
+	reverseChars bool,
+	highContrast bool,
+	runeMode string,
+) (RenderOptions, error) {
+	availableRuneMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS", "LOADING"}
+	if !slices.Contains(availableRuneMode, runeMode) {
+		return RenderOptions{}, fmt.Errorf("invalid rune mode: %s", runeMode)
+	}
+
+	return RenderOptions{
+		textSize:          textSize,
+		fontAspect:        fontAspect,
+		directionalRender: directionalRender,
+		edgeThreshold:     edgeThreshold,
+		reverseChars:      reverseChars,
+		highContrast:      highContrast,
+		runeMode:          runeMode,
+	}, nil
 }
 
 // Dark to Bright
@@ -38,7 +79,7 @@ const rectanglesRampBrightToDarkStr = " ░▒▓█"
 const barsRampBrightToDarkStr = " ▁▂▃▄▅▆▇█"
 const loadingRampBrightToDarkStr = " ⣀⣄⣆⣇⣧⣷⣿"
 
-func ConvertImageToString(filePath string) ([][]rune, error) {
+func ConvertImageToString(filePath string, renderOptions RenderOptions) ([][]rune, error) {
 	var outputChars [][]rune
 
 	f, err := os.Open(filePath)
@@ -55,38 +96,8 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 	}
 	_ = Logger().Info(fmt.Sprintf("format: %s", format))
 
-	// textSize: roughly controls how many pixels map to one character horizontally.
-	// If missing/invalid, fall back to a reasonable default.
-	textSizeAny, ok := Shared().Get("textSize")
-	if !ok || textSizeAny == nil {
-		return outputChars, errors.New("textSize is nil")
-	}
-	textSize, ok := textSizeAny.(int)
-	if !ok || textSize <= 0 {
-		textSize = 8
-	}
-
-	// fontAspect: terminal characters are typically taller than they are wide,
-	// so vertical cell size is textSize * fontAspect.
-	fontAspectAny, ok := Shared().Get("fontAspect")
-	if !ok || fontAspectAny == nil {
-		return outputChars, errors.New("fontAspect is nil")
-	}
-	fontAspect, ok := fontAspectAny.(float64)
-	if !ok || fontAspect <= 0 {
-		fontAspect = 2
-	}
-
-	// highContrast: optional contrast curve applied after cell luminance averaging.
-	// Useful for "washed out" images in ASCII output.
-	highContrastAny, ok := Shared().Get("highContrast")
-	if !ok || highContrastAny == nil {
-		return outputChars, errors.New("highContrast is nil")
-	}
-	highContrast := highContrastAny.(bool)
-
 	// Compute grid resolution (cols x rows) based on image size + character cell size.
-	cols, rows := getColsAndRows(inputImg, textSize, fontAspect)
+	cols, rows := getColsAndRows(inputImg, renderOptions.textSize, renderOptions.fontAspect)
 	cellWidth := float64(inputImg.Bounds().Dx()) / float64(cols)
 	cellHeight := float64(inputImg.Bounds().Dy()) / float64(rows)
 	if cellWidth <= 0 {
@@ -103,67 +114,54 @@ func ConvertImageToString(filePath string) ([][]rune, error) {
 
 	// Build a luminance grid (rows x cols) where each cell is 0..1.
 	// Each cell luminance is computed by averaging pixels in the corresponding image region.
-	luminanceGrid, err := buildLuminanceGrid(inputImg, cols, rows, highContrast)
+	luminanceGrid, err := buildLuminanceGrid(inputImg, cols, rows, renderOptions.highContrast)
 	if err != nil {
 		return outputChars, err
 	}
 	_ = Logger().Info(fmt.Sprintf("Successfully Build LumaGrid for %s", filePath))
 
-	// directionalRender: optional Edge Awareness.
-	// Derive edge magnitude/orientation from luminanceGrid and choose glyphs accordingly.
-	directionalRenderAny, ok := Shared().Get("directionalRender")
-	if !ok || directionalRenderAny == nil {
-		return outputChars, errors.New("directionalRender is nil")
-	}
-	directionalRender := directionalRenderAny.(bool)
 	edgeThreshold := 0.0
-	edgeInfo := make([][]EdgeInfo, 0)
-	if directionalRender {
-		edgeThresholdPercentile := 0.6
-		if edgeThresholdPercentileAny, ok := Shared().Get("edgeThresholdPercentile"); ok && edgeThresholdPercentileAny != nil {
-			if edgeThresholdPercentileVal, ok := edgeThresholdPercentileAny.(float64); ok {
-				edgeThresholdPercentile = clamp01(edgeThresholdPercentileVal)
-			}
-		}
+	edgeInfos := make([][]edgeInfo, 0)
+	if renderOptions.directionalRender {
+		edgeThresholdPercentile := clamp01(renderOptions.edgeThreshold)
 		edgeThreshold = edgeThresholdPercentile
 
 		dogGrid := differenceOfGaussiansGrid(luminanceGrid, 0.5, 1.0)
-		edgeInfo = applySobelFilter(dogGrid, cellWidth, cellHeight)
+		edgeInfos = applySobelFilter(dogGrid, cellWidth, cellHeight)
 	}
 
 	_ = Logger().Info(fmt.Sprintf("Beginning image conversion"))
-
-	runeModeAny, ok := Shared().Get("runeMode")
-	if !ok || runeModeAny == nil {
-		return outputChars, errors.New("runeMode is nil")
-	}
-	runeMode := runeModeAny.(string)
-
-	// reverseChars: invert ramp direction (useful for dark terminals / preference).
-	reverseCharsAny, ok := Shared().Get("reverseChars")
-	if !ok || reverseCharsAny == nil {
-		return outputChars, errors.New("reverseChars is nil")
-	}
-	reverseChars := reverseCharsAny.(bool)
 
 	// Convert each luminance cell to a glyph using the chosen ramp.
 	// indices are [row][col] matching outputChars.
 	for i := 0; i < len(luminanceGrid); i++ {
 		for j := 0; j < len(luminanceGrid[i]); j++ {
-			//if directionalRender true and manging surpasses threshold replace with directional char
-			if directionalRender && edgeInfo[i][j].Magnitude > edgeThreshold {
-				outputChars[i][j] = getEdgeRuneFromGradient(edgeInfo[i][j], runeMode)
+			//if directionalRender true and Magnitude surpasses threshold replace with directional char
+			if renderOptions.directionalRender && edgeInfos[i][j].Magnitude > edgeThreshold {
+				outputChars[i][j] = getEdgeRuneFromGradient(edgeInfos[i][j], renderOptions.runeMode)
 				if outputChars[i][j] == ' ' {
-					outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], runeMode, reverseChars)
+					outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], renderOptions.runeMode, renderOptions.reverseChars)
 				}
 			} else {
-				outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], runeMode, reverseChars)
+				outputChars[i][j] = getRuneForLuminanceValue(luminanceGrid[i][j], renderOptions.runeMode, renderOptions.reverseChars)
 			}
 		}
 	}
 
 	_ = Logger().Info(fmt.Sprintf("Finished image conversion"))
 	return outputChars, nil
+}
+
+func ImageRuneArrayIntoString(runeArray [][]rune) string {
+	outpurString := ""
+	for x := 0; x < len(runeArray); x++ {
+		for y := 0; y < len(runeArray[x]); y++ {
+			outpurString += string(runeArray[x][y])
+		}
+		outpurString += "\n"
+	}
+
+	return outpurString
 }
 
 // Calculates Columns and Rows for given TextSize and FontAspect
@@ -375,11 +373,11 @@ func applyContrast(l float64, factor float64) float64 {
 Applies Sobel filter to lumaGrid
 
 	Searches for biggest Change in luminance in adjacent grid values and calculates magnitude and angle of the change
-	Returns EdgeInfo grid with normalized values
+	Returns edgeInfo grid with normalized values
 
 Ref: https://stackoverflow.com/questions/17815687/image-processing-implementing-sobel-filter
 */
-func applySobelFilter(luminanceGrid [][]float64, cellWidth, cellHeight float64) [][]EdgeInfo {
+func applySobelFilter(luminanceGrid [][]float64, cellWidth, cellHeight float64) [][]edgeInfo {
 	rows := len(luminanceGrid)
 	if rows == 0 {
 		return nil
@@ -389,9 +387,9 @@ func applySobelFilter(luminanceGrid [][]float64, cellWidth, cellHeight float64) 
 		return nil
 	}
 
-	edgeInfo := make([][]EdgeInfo, rows)
+	edgeInfos := make([][]edgeInfo, rows)
 	for y := 0; y < rows; y++ {
-		edgeInfo[y] = make([]EdgeInfo, cols)
+		edgeInfos[y] = make([]edgeInfo, cols)
 	}
 
 	sobelX := [][]int{
@@ -446,7 +444,7 @@ func applySobelFilter(luminanceGrid [][]float64, cellWidth, cellHeight float64) 
 			magnitude := math.Sqrt(Gx*Gx + Gy*Gy)
 			angle := math.Atan2(Gy, Gx)
 
-			edgeInfo[y][x] = EdgeInfo{
+			edgeInfos[y][x] = edgeInfo{
 				Magnitude: magnitude,
 				Angle:     angle,
 			}
@@ -462,18 +460,18 @@ func applySobelFilter(luminanceGrid [][]float64, cellWidth, cellHeight float64) 
 	}
 
 	//normalize Values to 0..1
-	for y := 0; y < len(edgeInfo); y++ {
-		for x := 0; x < len(edgeInfo[y]); x++ {
-			edgeInfo[y][x].Magnitude = edgeInfo[y][x].Magnitude / highestMagnitude
+	for y := 0; y < len(edgeInfos); y++ {
+		for x := 0; x < len(edgeInfos[y]); x++ {
+			edgeInfos[y][x].Magnitude = edgeInfos[y][x].Magnitude / highestMagnitude
 		}
 	}
 	_ = Logger().Info(fmt.Sprintf("Applied Sobel filter, highestMagnitude %f", highestMagnitude))
 
-	return edgeInfo
+	return edgeInfos
 }
 
 // Get Rune if directionalRender is true intead of using luminance value
-func getEdgeRuneFromGradient(edge EdgeInfo, runeMode string) rune {
+func getEdgeRuneFromGradient(edge edgeInfo, runeMode string) rune {
 	// Sobel angle is gradient direction;
 	// edge orientation is perpendicular.
 	angle := edge.Angle + (math.Pi / 2)
