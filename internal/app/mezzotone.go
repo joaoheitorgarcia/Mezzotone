@@ -149,9 +149,11 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.currentActiveMenu == filePickerMenu {
 				m.renderSettings.SetActive(0)
+				m.currentActiveMenu++
+				return m, cmd
 			}
 			if m.currentActiveMenu == renderOptionsMenu {
-				if !m.renderSettings.Editing && m.renderSettings.Confirm {
+				if !m.renderSettings.Editing {
 					m.currentActiveMenu++
 
 					normalizedOptions := normalizeRenderOptionsForService(m.renderSettings.Items)
