@@ -84,7 +84,7 @@ func ConvertImageToString(filePath string, renderOptions RenderOptions) ([][]run
 
 	f, err := os.Open(filePath)
 	if err != nil {
-		return outputChars, err
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 
@@ -92,7 +92,7 @@ func ConvertImageToString(filePath string, renderOptions RenderOptions) ([][]run
 
 	inputImg, format, err := image.Decode(f)
 	if err != nil {
-		return outputChars, err
+		return nil, err
 	}
 	_ = Logger().Info(fmt.Sprintf("format: %s", format))
 
@@ -116,7 +116,7 @@ func ConvertImageToString(filePath string, renderOptions RenderOptions) ([][]run
 	// Each cell luminance is computed by averaging pixels in the corresponding image region.
 	luminanceGrid, err := buildLuminanceGrid(inputImg, cols, rows, renderOptions.highContrast)
 	if err != nil {
-		return outputChars, err
+		return nil, err
 	}
 	_ = Logger().Info(fmt.Sprintf("Successfully Build LumaGrid for %s", filePath))
 

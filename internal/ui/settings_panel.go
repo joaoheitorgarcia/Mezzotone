@@ -95,14 +95,22 @@ func (m *SettingsPanel) Update(msg tea.Msg) (SettingsPanel, tea.Cmd) {
 		switch msg.String() {
 		case "up", "k":
 			if m.cursor > 0 {
+				m.Confirm = false
 				m.cursor--
+			}
+			if m.cursor == len(m.Items) {
+				m.Confirm = true
 			}
 			m.errMsg = ""
 			return *m, nil
 
 		case "down", "j":
 			if m.cursor < len(m.Items) {
+				m.Confirm = false
 				m.cursor++
+			}
+			if m.cursor == len(m.Items) {
+				m.Confirm = true
 			}
 			m.errMsg = ""
 			return *m, nil
@@ -125,7 +133,6 @@ func (m *SettingsPanel) Update(msg tea.Msg) (SettingsPanel, tea.Cmd) {
 		case "enter":
 			m.errMsg = ""
 			if m.cursor == len(m.Items) {
-				m.Confirm = true
 				return *m, nil
 			}
 			it := &m.Items[m.cursor]

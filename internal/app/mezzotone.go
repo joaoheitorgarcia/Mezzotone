@@ -147,13 +147,8 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case "enter":
-			if m.currentActiveMenu == filePickerMenu {
-				m.renderSettings.SetActive(0)
-				m.currentActiveMenu++
-				return m, cmd
-			}
 			if m.currentActiveMenu == renderOptionsMenu {
-				if !m.renderSettings.Editing {
+				if !m.renderSettings.Editing && m.renderSettings.Confirm {
 					m.currentActiveMenu++
 
 					normalizedOptions := normalizeRenderOptionsForService(m.renderSettings.Items)
@@ -161,7 +156,6 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if err != nil {
 						//TODO HAndle this
 					}
-					_ = services.Logger().Info(fmt.Sprintf(services.ImageRuneArrayIntoString(runeArray)))
 					m.renderView.SetContent(services.ImageRuneArrayIntoString(runeArray))
 					return m, cmd
 				}
@@ -176,7 +170,10 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedFile = path
 			_ = services.Logger().Info(fmt.Sprintf("Selected File: %s", m.selectedFile))
 
+			m.renderSettings.SetActive(0)
+			m.renderSettings.Confirm = false
 			m.currentActiveMenu++
+			return m, cmd
 		}
 
 		if didSelect, path := m.filePicker.DidSelectDisabledFile(msg); didSelect {
@@ -184,6 +181,7 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.renderView.SetContent("Selected file need to be an image.\nAllowed types: .png, .jpg, .jpeg, .bmp, .webp, .tiff")
 			m.selectedFile = ""
 			_ = services.Logger().Info(fmt.Sprintf("Tried Selecting File: %s", path))
+			return m, cmd
 		}
 	}
 	if m.currentActiveMenu == renderOptionsMenu {

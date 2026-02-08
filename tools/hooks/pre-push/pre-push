@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+echo ""
+echo "Running Go tests before push..."
+
+# Fail if go.mod isn't found (optional safety)
+if [ ! -f "go.mod" ]; then
+  echo "No go.mod found. Skipping."
+  exit 0
+fi
+
+go test ./...
+
+echo ""
+echo "✅ Tests passed. Proceeding with push."
