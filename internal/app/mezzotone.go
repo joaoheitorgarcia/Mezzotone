@@ -4,31 +4,36 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"codeberg.org/JoaoGarcia/Mezzotone/internal/services"
+	"codeberg.org/JoaoGarcia/Mezzotone/internal/termtext"
 	"codeberg.org/JoaoGarcia/Mezzotone/internal/ui"
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // TODO REORDER Layout IF TERMINAL width < height
+
+const firstScreen = ""
 
 type MezzotoneModel struct {
 	filePicker   filepicker.Model
 	selectedFile string
 
-	renderView     viewport.Model
-	leftColumn     viewport.Model
-	renderSettings ui.SettingsPanel
+	renderView      viewport.Model
+	leftColumn      viewport.Model
+	renderSettings  ui.SettingsPanel
+	messageViewPort viewport.Model
 
 	style styleVariables
 
 	currentActiveMenu int
+	helpVisible       bool
+	helpPreviousMenu  int
+	renderContent     string
 
 	width  int
 	height int
@@ -42,6 +47,7 @@ type styleVariables struct {
 }
 
 var renderSettingsItemsSize int
+var messageViewMessage string
 
 const (
 	filePickerMenu = iota
@@ -76,24 +82,29 @@ func NewMezzotoneModel() MezzotoneModel {
 	fp.KeyMap = filepicker.KeyMap{
 		Down:     key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j", "down")),
 		Up:       key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k", "up")),
-		PageUp:   key.NewBinding(key.WithKeys("K", "pgup"), key.WithHelp("pgup", "page up")),
-		PageDown: key.NewBinding(key.WithKeys("J", "pgdown"), key.WithHelp("pgdown", "page down")),
+		GoToTop:  key.NewBinding(key.WithKeys("K", "pgup"), key.WithHelp("pgup", "page up")),
+		GoToLast: key.NewBinding(key.WithKeys("J", "pgdown"), key.WithHelp("pgdown", "page down")),
 		Back:     key.NewBinding(key.WithKeys("left", "backspace"), key.WithHelp("h", "back")),
 		Open:     key.NewBinding(key.WithKeys("right", "enter"), key.WithHelp("l", "open")),
 		Select:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
 	}
 
 	renderView := viewport.New(0, 0)
-	renderView.SetContent("Placeholder Text")
 	leftColumn := viewport.New(0, 0)
+
+	messageViewPort := viewport.New(0, 0)
+	messageViewMessage = "Select image gif or video to convert:"
+	messageViewPort.SetContent(messageViewMessage + lipgloss.NewStyle().Faint(true).Render("\n\nPress h to toggle Help. Press esc to Quit."))
 
 	return MezzotoneModel{
 		filePicker:        fp,
 		renderView:        renderView,
+		messageViewPort:   messageViewPort,
 		style:             windowStyles,
 		leftColumn:        leftColumn,
 		renderSettings:    renderSettingsModel,
 		currentActiveMenu: filePickerMenu,
+		helpPreviousMenu:  filePickerMenu,
 	}
 }
 
@@ -119,17 +130,46 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderSettings.SetWidth(m.style.leftColumnWidth)
 		m.renderSettings.SetHeight(renderSettingsItemsSize)
 
-		computedFilePickerHeight := m.renderView.Height - (renderSettingsItemsSize + 4 /*renderSettings header and end*/) - m.style.windowMargin*2 - 2 //inputFile Title
+		m.messageViewPort.Height = 3
+		m.messageViewPort.Width = m.style.leftColumnWidth
+
+		computedFilePickerHeight := m.renderView.Height -
+			(renderSettingsItemsSize + 4) - //renderSettings header and end
+			(m.messageViewPort.Height + 2) - //message render view
+			(m.style.windowMargin + 3) //inputFile Title
+
 		m.filePicker.SetHeight(computedFilePickerHeight)
 
 		return m, nil
 
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "h":
+			if m.currentActiveMenu == renderOptionsMenu && m.renderSettings.Editing {
+				break
+			}
+			if m.helpVisible {
+				m.helpVisible = false
+				m.currentActiveMenu = m.helpPreviousMenu
+				m.renderView.SetContent(m.renderContent)
+				return m, nil
+			}
+			m.helpVisible = true
+			m.helpPreviousMenu = m.currentActiveMenu
+			m.currentActiveMenu = renderViewText
+			m.renderView.GotoTop()
+			m.renderView.SetContent(buildRenderHelpText())
+			return m, nil
 		case "ctrl+c":
 			return m, tea.Quit
 
 		case "esc":
+			if m.helpVisible {
+				m.helpVisible = false
+				m.currentActiveMenu = m.helpPreviousMenu
+				m.renderView.SetContent(m.renderContent)
+				return m, nil
+			}
 			if m.currentActiveMenu == filePickerMenu {
 				//TODO ask for confimation
 				return m, tea.Quit
@@ -156,7 +196,11 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if err != nil {
 						//TODO HAndle this
 					}
-					m.renderView.SetContent(services.ImageRuneArrayIntoString(runeArray))
+					m.renderContent = services.ImageRuneArrayIntoString(runeArray)
+					_ = services.Logger().Info(fmt.Sprintf("%s", m.renderContent))
+					if !m.helpVisible {
+						m.renderView.SetContent(m.renderContent)
+					}
 					return m, cmd
 				}
 			}
@@ -178,6 +222,16 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down":
 			if m.currentActiveMenu == renderViewText {
 				m.renderView.ScrollDown(1)
+				return m, cmd
+			}
+		case "pgdown":
+			if m.currentActiveMenu == renderOptionsMenu {
+				m.renderSettings.SetActive(renderSettingsItemsSize)
+				return m, cmd
+			}
+		case "pgup":
+			if m.currentActiveMenu == renderOptionsMenu {
+				m.renderSettings.SetActive(renderSettingsItemsSize)
 				return m, cmd
 			}
 		}
@@ -219,33 +273,24 @@ func (m MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m MezzotoneModel) View() string {
 	innerW := m.style.leftColumnWidth - 2
 
-	//filePickerTitleStyle := lipgloss.NewStyle().SetString("Pick an image, gif or video to convert:")
-	//filePickerTitleRender := truncateLinesANSI(filePickerTitleStyle.Render(), innerW)
+	messageViewportRenderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		Width(m.style.leftColumnWidth)
+	messageViewportRender := messageViewportRenderStyle.Render(m.messageViewPort.View())
+
 	filePickerStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		Width(m.style.leftColumnWidth)
-	fpView := truncateLinesANSI(m.filePicker.View(), innerW)
-	filePickerRender := filePickerStyle.Render( /*filePickerTitleRender + "\n\n" +*/ fpView)
+	fpView := termtext.TruncateLinesANSI(m.filePicker.View(), innerW)
+	filePickerRender := filePickerStyle.Render(fpView)
 
-	lefColumnRender := lipgloss.JoinVertical(lipgloss.Left, filePickerRender, m.renderSettings.View())
+	lefColumnRender := lipgloss.JoinVertical(lipgloss.Top, messageViewportRender, filePickerRender, m.renderSettings.View())
 
 	renderViewStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder())
 	renderViewRender := renderViewStyle.Render(m.renderView.View())
 
 	return lipgloss.JoinHorizontal(lipgloss.Left, lefColumnRender, renderViewRender)
-}
-
-func truncateLinesANSI(s string, maxWidth int) string {
-	if maxWidth <= 0 {
-		return ""
-	}
-
-	lines := strings.Split(s, "\n")
-	for i := range lines {
-		lines[i] = ansi.Truncate(lines[i], maxWidth, "…")
-	}
-	return strings.Join(lines, "\n")
 }
 
 func normalizeRenderOptionsForService(settingsValues []ui.SettingItem) services.RenderOptions {

@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"codeberg.org/JoaoGarcia/Mezzotone/internal/termtext"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -56,6 +57,7 @@ func NewSettingsPanel(title string, items []SettingItem) SettingsPanel {
 func (m *SettingsPanel) Init() tea.Cmd {
 	return nil
 }
+
 func (m *SettingsPanel) Update(msg tea.Msg) (SettingsPanel, tea.Cmd) {
 	switch msg := msg.(type) {
 
@@ -172,12 +174,13 @@ func (m *SettingsPanel) View() string {
 	valueStyle := lipgloss.NewStyle()
 
 	selected := lipgloss.NewStyle().Reverse(true)
-	//errStyle := lipgloss.NewStyle().Faint(true)
 
-	innerW := max(20, m.width-2-4 /*border + padding left+right*/)
+	innerW := max(1, m.width-2-4 /*border + padding left+right*/)
+	gapW := 2
 
-	labelW := max(18, innerW/2)
-	valueW := min(10, innerW-labelW-2)
+	// Keep value readable, but always size columns from the real available width.
+	valueW := min(10, max(1, innerW/3))
+	labelW := max(1, innerW-gapW-valueW)
 
 	lines := []string{title, ""}
 
@@ -188,10 +191,10 @@ func (m *SettingsPanel) View() string {
 			val = m.input.View()
 		}
 
-		left := labelStyle.Width(labelW).Render(it.Label)
+		left := labelStyle.MaxWidth(labelW).Width(labelW).Render(termtext.TruncateLinesANSI(it.Label, labelW))
 		right := valueStyle.Width(valueW).Render(val)
 
-		row := left + "  " + right
+		row := left + strings.Repeat(" ", gapW) + right
 		if i == m.cursor {
 			row = selected.Render(row)
 		}
