@@ -147,42 +147,14 @@ Powered by:
 
 ------------------------------------------------------------------------
 
-## 📦 Installation
-
-### Requirements
-
--   Go 1.22+
--   Terminal with Unicode support (recommended)
-
-### Clone
-
-``` bash
-git clone https://github.com/JoaoHeitorGarcia/Mezzotone.git
-cd Mezzotone
-```
-
-### Build
-
-``` bash
-go build
-```
-
-### Run
-
-``` bash
-go run .
-```
-
-------------------------------------------------------------------------
-
 ## 🚀 Future Roadmap
 
 -   GIF support
--   Video support (ffmpeg pipeline)
+-   Video support
 
 ### Export
 
--   Text Ouput
+-   Text Ouput Export
 -   HTML colored ASCII
 -   PNG rasterized output
 -   Animated ASCII sequences
