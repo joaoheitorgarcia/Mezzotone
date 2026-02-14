@@ -103,7 +103,7 @@ func NewMezzotoneModel() *MezzotoneModel {
 		currentActiveMenu: filePickerMenu,
 		helpPreviousMenu:  filePickerMenu,
 	}
-	model.updateMessageViewPortContent("Select image gif or video to convert:")
+	model.updateMessageViewPortContent("Select image gif or video to convert:", false)
 
 	return model
 }
@@ -139,7 +139,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.filePicker.SetHeight(computedFilePickerHeight)
 
-		m.updateMessageViewPortContent("Select image gif or video to convert:")
+		m.updateMessageViewPortContent("Select image gif or video to convert:", false)
 
 		return m, nil
 
@@ -195,7 +195,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					normalizedOptions := normalizeRenderOptionsForService(m.renderSettings.Items)
 					runeArray, err := services.ConvertImageToString(m.selectedFile, normalizedOptions)
 					if err != nil {
-						m.updateMessageViewPortContent("⚠ " + err.Error())
+						m.updateMessageViewPortContent("⚠ "+err.Error(), true)
 					}
 					m.renderContent = services.ImageRuneArrayIntoString(runeArray)
 					_ = services.Logger().Info(fmt.Sprintf("%s", m.renderContent))
@@ -252,7 +252,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if didSelect, path := m.filePicker.DidSelectDisabledFile(msg); didSelect {
-			m.updateMessageViewPortContent("⚠ Selected file not allowed")
+			m.updateMessageViewPortContent("⚠ Selected file not allowed", true)
 			m.selectedFile = ""
 			_ = services.Logger().Info(fmt.Sprintf("Tried Selecting File: %s", path))
 			return m, cmd
@@ -260,6 +260,11 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.currentActiveMenu == renderOptionsMenu {
 		m.renderSettings, cmd = m.renderSettings.Update(msg)
+		if errMsg := m.renderSettings.ErrorMessage(); errMsg != "" {
+			m.updateMessageViewPortContent("⚠ "+errMsg, true)
+		} else {
+			m.updateMessageViewPortContent("Edit render options and confirm:", false)
+		}
 		return m, cmd
 	}
 	if m.currentActiveMenu == renderViewText {
@@ -378,7 +383,13 @@ func (m *MezzotoneModel) decrementCurrentActiveMenu() {
 	)
 }
 
-func (m *MezzotoneModel) updateMessageViewPortContent(messageViewContent string) {
+func (m *MezzotoneModel) updateMessageViewPortContent(messageViewContent string, isError bool) {
+	if isError {
+		messageViewContent = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("9")).
+			Render(messageViewContent)
+	}
+
 	m.messageViewPort.SetContent(
 		termtext.TruncateLinesANSI(
 			messageViewContent+lipgloss.NewStyle().Faint(true).Render("\nPress h to toggle Help. Press esc to Quit."),

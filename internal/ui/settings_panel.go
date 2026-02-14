@@ -201,14 +201,6 @@ func (m *SettingsPanel) View() string {
 		lines = append(lines, row)
 	}
 
-	//TODO hint and erro line bellow viewport
-	//if m.errMsg != "" {
-	//	lines = append(lines, "")
-	//	lines = append(lines, errStyle.Render("⚠ "+m.errMsg))
-	//} else {
-	//	lines = append(lines, "")
-	//	lines = append(lines, errStyle.Render(hintLine(m)))
-	//}
 	confirmButton := labelStyle.Width(labelW + valueW).Render("CONFIRM")
 	if m.cursor == len(m.Items) {
 		confirmButton = selected.Render(confirmButton)
@@ -320,9 +312,6 @@ func (m *SettingsPanel) SetActive(i int) {
 	m.cursor = i
 }
 
-//func hintLine(m SettingsPanel) string {
-//	if m.Editing {
-//		return "Enter: save   Esc: cancel"
-//	}
-//	return "↑/↓: select   Enter: edit/toggle   Space: toggle bool   ←/→: enum"
-//}
+func (m *SettingsPanel) ErrorMessage() string {
+	return m.errMsg
+}

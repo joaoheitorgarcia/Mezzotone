@@ -9,12 +9,7 @@ import (
 )
 
 func TestUpdateMessageViewPortContent_TruncatesByLeftColumnWidth(t *testing.T) {
-	previousMessage := messageViewContent
-	t.Cleanup(func() {
-		messageViewContent = previousMessage
-	})
-
-	messageViewContent = "this is a long status line that must be truncated"
+	messageViewContent := "this is a long status line that must be truncated"
 	model := &MezzotoneModel{
 		messageViewPort: viewport.New(8, 3),
 		style: styleVariables{
@@ -22,7 +17,7 @@ func TestUpdateMessageViewPortContent_TruncatesByLeftColumnWidth(t *testing.T) {
 		},
 	}
 
-	model.updateMessageViewPortContent()
+	model.updateMessageViewPortContent(messageViewContent, false)
 	view := model.messageViewPort.View()
 	expectedFirstLine := termtext.TruncateLinesANSI(messageViewContent, model.style.leftColumnWidth)
 
