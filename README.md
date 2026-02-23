@@ -1,7 +1,5 @@
-![Status: Developing](https://img.shields.io/badge/Status-In_Development-blue)
-[![Version](https://img.shields.io/badge/Version-v.0.0.0-blue.svg)](https://github.com/JoaoHeitorGarcia/Mezzotone/releases/tag/Mezzotone)
-
-https://github.com/JoaoHeitorGarcia/Mezzotone/releases/tag/Mezzotone
+[![Version](https://img.shields.io/badge/Version-v.0.1.0-blue.svg)](https://github.com/JoaoHeitorGarcia/Mezzotone/releases/tag/Mezzotone)
+[![Status](https://img.shields.io/badge/Powered_by-Bubble_Tea-7a4a8f)](https://github.com/charmbracelet/bubbletea?tab=readme-ov-file)
 
 # 🎨 Mezzotone
 
@@ -13,19 +11,6 @@ converts images (and eventually GIFs/videos) into ASCII or
 Unicode art.
 
 <img width="1920" height="1080" alt="2026-02-17-000941_hyprshot" src="https://github.com/user-attachments/assets/48f48dc1-7e67-4748-8dc8-53195f5bd955" />
-
-
-------------------------------------------------------------------------
-
-## ✨ Features
-
--   🖼 Image → ASCII / Unicode rendering
--   🧠 Edge-aware rendering
--   🎛 Interactive TUI built with Bubble Tea
--   🔤 Custom ASCII + extended Unicode ramps
--   ⚡ High-contrast rendering mode
--   🧩 Modular rendering pipeline (easy to extend)
--   🧪 Designed for experimentation (ramps, filters, thresholds)
 
 ------------------------------------------------------------------------
 
@@ -117,32 +102,5 @@ $%#$%&@■■@&&%$$@■@&$□■@░@%□■&#░$+$□%@■%%&**++####%@□□�
 ### Input
 
 <img width="1084" height="1080" alt="image" src="https://github.com/user-attachments/assets/d326e5b6-d853-4d2e-b111-0ae5ef352a48" />
-
-------------------------------------------------------------------------
-
-## 🧠 Rendering Pipeline
-
-    Input Image
-       ↓
-    Downscale → Character Grid (Area / Box Filter)
-       ↓
-    Grayscale / Luminance Extraction
-       ↓
-    Optional: Sobel Edge Detection
-       ↓
-    Optional: High Contrast Curve
-       ↓
-    Ramp Mapping (ASCII / Unicode)
-       ↓
-    Terminal Render
-
-------------------------------------------------------------------------
-
-## 🖥 TUI Interface
-
-Powered by:
-
--   Bubble Tea --- state machine + rendering
--   Lipgloss --- styling
 
 ------------------------------------------------------------------------
