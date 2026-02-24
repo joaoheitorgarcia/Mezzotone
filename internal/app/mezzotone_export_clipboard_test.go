@@ -23,7 +23,7 @@ func TestMezzotoneModelExportTxtSavesRenderedContentToHome(t *testing.T) {
 	t.Cleanup(func() { newUUID = previousNewUUID })
 
 	m := NewMezzotoneModel()
-	m.currentActiveMenu = renderViewText
+	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
 
@@ -53,7 +53,7 @@ func TestMezzotoneModelExportPngCreatesValidPNG(t *testing.T) {
 	t.Cleanup(func() { newUUID = previousNewUUID })
 
 	m := NewMezzotoneModel()
-	m.currentActiveMenu = renderViewText
+	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
 
@@ -87,7 +87,7 @@ func TestMezzotoneModelExportGifCreatesValidGIF(t *testing.T) {
 	t.Cleanup(func() { newUUID = previousNewUUID })
 
 	m := NewMezzotoneModel()
-	m.currentActiveMenu = renderViewText
+	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
 
@@ -121,7 +121,7 @@ func TestMezzotoneModelExportGifFromAnimationExportsMultipleFrames(t *testing.T)
 	t.Cleanup(func() { newUUID = previousNewUUID })
 
 	m := NewMezzotoneModel()
-	m.currentActiveMenu = renderViewText
+	m.currentActiveMenu = renderView
 	m.renderContent = "frame-zero"
 	m.style.leftColumnWidth = 120
 	m.asciiGIFFrames = []ui.AnimationFrame{
@@ -156,7 +156,7 @@ func TestMezzotoneModelCopyToClipboardWhenUnavailableShowsError(t *testing.T) {
 	t.Cleanup(func() { clipboardOK = previousClipboardOK })
 
 	m := NewMezzotoneModel()
-	m.currentActiveMenu = renderViewText
+	m.currentActiveMenu = renderView
 	m.style.leftColumnWidth = 120
 	clipboardOK = false
 

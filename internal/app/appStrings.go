@@ -32,6 +32,7 @@ func buildRenderHelpText() string {
 		"Render View",
 		"  arrows         Scroll output/help",
 		"  h              Hide help",
+		"  f              Toggle Fullscreen",
 		"  c              Copy to clipboard",
 		"  t              Export to txt",
 		"  i              Export to image",

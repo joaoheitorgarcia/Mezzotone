@@ -68,8 +68,9 @@ type pngExportDoneMsg struct {
 }
 
 type styleVariables struct {
-	windowMargin    int
-	leftColumnWidth int
+	windowMargin           int
+	leftColumnWidth        int
+	isRenderViewFullscreen bool
 }
 
 var renderSettingsItemsSize int
@@ -79,12 +80,14 @@ var newUUID = uuid.New
 const (
 	filePickerMenu = iota
 	renderOptionsMenu
-	renderViewText
+	renderView
 )
 
 func NewMezzotoneModel() *MezzotoneModel {
 	windowStyles := styleVariables{
-		windowMargin: 2,
+		windowMargin:           2,
+		leftColumnWidth:        10,
+		isRenderViewFullscreen: false,
 	}
 
 	runeMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS"}
@@ -182,15 +185,14 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 
-		m.renderView.Height = m.height - m.style.windowMargin
-		m.renderView.Width = m.width / 7 * 5
-
 		m.style.leftColumnWidth = m.width / 7 * 2
 
 		m.renderSettings.SetWidth(m.style.leftColumnWidth)
 		m.renderSettings.SetHeight(renderSettingsItemsSize)
 
 		m.messageViewPort.Width = m.style.leftColumnWidth
+
+		m.renderView.Height = m.height - m.style.windowMargin
 
 		computedFilePickerHeight := m.renderView.Height -
 			(renderSettingsItemsSize + 4) - //renderSettings header and end
@@ -199,6 +201,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.filePicker.SetHeight(computedFilePickerHeight)
 
+		m.toggleRenderViewFullscreen()
 		m.updateMessageViewPortContent("Select image or gif to convert:", false)
 
 		return m, nil
@@ -206,7 +209,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "c":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				if !clipboardOK {
 					m.updateMessageViewPortContent("Clipboard not available (init failed)", true)
 					return m, nil
@@ -217,7 +220,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "t":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				homeDir, err := os.UserHomeDir()
 				if err != nil {
 					m.updateMessageViewPortContent("⚠ "+err.Error(), true)
@@ -237,7 +240,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			}
 		case "i":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				homeDir, _ := os.UserHomeDir()
 				generatedUuid := newUUID()
 				outPath := filepath.Join(homeDir, "Mezzotone_"+generatedUuid.String()+".png")
@@ -260,10 +263,10 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					TargetAspect: targetAspect,
 				}
 				m.updateMessageViewPortContent("Exporting image to "+outPath+" ...", false)
-				return m, exportASCIIPNGCmd(outPath, m.renderContent, exportOptions)
+				return m, exportAsciiToPngCmd(outPath, m.renderContent, exportOptions)
 			}
 		case "g":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				homeDir, _ := os.UserHomeDir()
 				generatedUuid := newUUID()
 				outPath := filepath.Join(homeDir, "Mezzotone_"+generatedUuid.String()+".gif")
@@ -294,7 +297,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					})
 				}
 				m.updateMessageViewPortContent("Exporting gif to "+outPath+" ...", false)
-				return m, exportASCIIGIFCmd(outPath, m.renderContent, gifFrames, exportOptions)
+				return m, exportAsciiToGifCmd(outPath, m.renderContent, gifFrames, exportOptions)
 			}
 		case "h":
 			if m.currentActiveMenu == renderOptionsMenu && m.renderSettings.Editing {
@@ -308,13 +311,12 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.helpVisible = true
 			m.helpPreviousMenu = m.currentActiveMenu
-			m.currentActiveMenu = renderViewText
+			m.currentActiveMenu = renderView
 			m.renderView.GotoTop()
 			m.renderView.SetContent(buildRenderHelpText())
 			return m, nil
 		case "ctrl+c":
 			return m, tea.Quit
-
 		case "esc":
 			if m.helpVisible {
 				m.helpVisible = false
@@ -333,11 +335,10 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, cmd
 			}
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				m.decrementCurrentActiveMenu()
 				return m, cmd
 			}
-
 		case "enter":
 			if m.currentActiveMenu == renderOptionsMenu {
 				if !m.renderSettings.Editing && m.renderSettings.Confirm {
@@ -423,22 +424,22 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "left":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				m.renderView.ScrollLeft(1)
 				return m, cmd
 			}
 		case "right":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				m.renderView.ScrollRight(1)
 				return m, cmd
 			}
 		case "up":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				m.renderView.ScrollUp(1)
 				return m, cmd
 			}
 		case "down":
-			if m.currentActiveMenu == renderViewText {
+			if m.currentActiveMenu == renderView {
 				m.renderView.ScrollDown(1)
 				return m, cmd
 			}
@@ -453,6 +454,11 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.renderSettings.SetActive(0)
 				m.renderSettings.Confirm = false
 				return m, cmd
+			}
+		case "f":
+			if m.currentActiveMenu == renderView {
+				m.style.isRenderViewFullscreen = !m.style.isRenderViewFullscreen
+				m.toggleRenderViewFullscreen()
 			}
 		}
 	}
@@ -486,7 +492,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	if m.currentActiveMenu == renderViewText {
+	if m.currentActiveMenu == renderView {
 		m.renderView, cmd = m.renderView.Update(msg)
 		return m, cmd
 	}
@@ -494,59 +500,15 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func exportASCIIGIFCmd(outPath, renderContent string, frames []export.ASCIIGIFFrame, exportOptions export.ASCIIExportOptions) tea.Cmd {
-	return func() (msg tea.Msg) {
-		defer func() {
-			if rec := recover(); rec != nil {
-				msg = gifExportDoneMsg{
-					outPath: outPath,
-					err:     fmt.Errorf("gif export panic: %v", rec),
-				}
-			}
-		}()
-
-		var err error
-		if len(frames) == 0 {
-			frames = []export.ASCIIGIFFrame{
-				{
-					ASCII:    renderContent,
-					Duration: 100 * time.Millisecond,
-				},
-			}
-		}
-		err = export.ASCIIFramesToGIF(frames, outPath, exportOptions)
-
-		msg = gifExportDoneMsg{
-			outPath: outPath,
-			err:     err,
-		}
-		return msg
-	}
-}
-
-func exportASCIIPNGCmd(outPath, renderContent string, exportOptions export.ASCIIExportOptions) tea.Cmd {
-	return func() (msg tea.Msg) {
-		defer func() {
-			if rec := recover(); rec != nil {
-				msg = pngExportDoneMsg{
-					outPath: outPath,
-					err:     fmt.Errorf("png export panic: %v", rec),
-				}
-			}
-		}()
-
-		err := export.ASCIIToPNG(renderContent, outPath, exportOptions)
-		msg = pngExportDoneMsg{
-			outPath: outPath,
-			err:     err,
-		}
-		return msg
-	}
-}
-
 func (m *MezzotoneModel) View() string {
-	innerW := m.style.leftColumnWidth - 2
 
+	if m.style.isRenderViewFullscreen {
+		renderViewStyle := lipgloss.NewStyle().
+			BorderStyle(lipgloss.NormalBorder())
+		return renderViewStyle.Render(m.renderView.View())
+	}
+
+	innerW := m.style.leftColumnWidth - 2
 	messageViewportRenderStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		Width(m.style.leftColumnWidth)
@@ -555,7 +517,7 @@ func (m *MezzotoneModel) View() string {
 	filePickerStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		Width(m.style.leftColumnWidth)
-	fpView := termtext.TruncateLinesANSI(m.safeFilePickerView(), innerW)
+	fpView := termtext.TruncateLinesANSI(m.filePicker.View(), innerW)
 	filePickerRender := filePickerStyle.Render(fpView)
 
 	lefColumnRender := lipgloss.JoinVertical(lipgloss.Top, messageViewportRender, filePickerRender, m.renderSettings.View())
@@ -624,7 +586,7 @@ func (m *MezzotoneModel) incrementCurrentActiveMenu() {
 	case renderOptionsMenu:
 		messageViewContent = "Edit render options and confirm:"
 		break
-	case renderViewText:
+	case renderView:
 		messageViewContent = "See export keybindings With h"
 		break
 	}
@@ -648,7 +610,7 @@ func (m *MezzotoneModel) decrementCurrentActiveMenu() {
 	case renderOptionsMenu:
 		messageViewContent = "Edit render options and confirm:"
 		break
-	case renderViewText:
+	case renderView:
 		messageViewContent = "Rendered image"
 		break
 	}
@@ -691,10 +653,9 @@ func IsGIF(path string) bool {
 	return format == "gif"
 }
 
-// SplitAnimatedGIF decodes an animated GIF and returns fully-composited frames plus per-frame delays.
+// SplitAnimatedGIF decodes an animated GIF and returns frames plus per-frame delays.
 // GIF frames are often partial/offset “patches”, so we simulate playback by drawing each frame onto a
-// full-size RGBA canvas (respecting transparency + disposal rules), cloning the canvas after each draw
-// so frames don’t share the same pixel buffer. Delays are in 1/100s (e.g., 5 => 50ms).
+// full-size RGBA canvas and then clone the canvas after each draw so frames don’t share the same pixel buffer.
 func SplitAnimatedGIF(r io.Reader) (frames []image.Image, delays []int, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -714,18 +675,15 @@ func SplitAnimatedGIF(r io.Reader) (frames []image.Image, delays []int, err erro
 	canvasBounds := image.Rect(0, 0, w, h)
 	canvas := image.NewRGBA(canvasBounds)
 
-	// Fill with background color (best-effort)
 	bg := color.RGBA{}
 	if len(g.Image[0].Palette) > 0 && int(g.BackgroundIndex) < len(g.Image[0].Palette) {
 		r0, g0, b0, a0 := g.Image[0].Palette[g.BackgroundIndex].RGBA()
-		bg = color.RGBA{uint8(r0 >> 8), uint8(g0 >> 8), uint8(b0 >> 8), uint8(a0 >> 8)}
+		bg = color.RGBA{R: uint8(r0 >> 8), G: uint8(g0 >> 8), B: uint8(b0 >> 8), A: uint8(a0 >> 8)}
 	}
 	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: bg}, image.Point{}, draw.Src)
 
-	// Delays: keep same length as frames; if missing, default to 0.
 	delays = make([]int, 0, len(g.Image))
 
-	// For "restore to previous" disposal
 	var prevCanvas *image.RGBA
 
 	for i, src := range g.Image {
@@ -736,13 +694,9 @@ func SplitAnimatedGIF(r io.Reader) (frames []image.Image, delays []int, err erro
 			prevCanvas = nil
 		}
 
-		// Draw this frame at its own offset (src.Bounds().Min)
 		draw.Draw(canvas, src.Bounds(), src, src.Bounds().Min, draw.Over)
-
-		// Snapshot AFTER drawing (clone!)
 		frames = append(frames, cloneRGBA(canvas))
 
-		// Record delay (1/100s)
 		if len(g.Delay) > i {
 			delays = append(delays, g.Delay[i])
 		} else {
@@ -769,4 +723,62 @@ func cloneRGBA(src *image.RGBA) *image.RGBA {
 	dst := image.NewRGBA(src.Bounds())
 	copy(dst.Pix, src.Pix)
 	return dst
+}
+
+func exportAsciiToGifCmd(outPath, renderContent string, frames []export.ASCIIGIFFrame, exportOptions export.ASCIIExportOptions) tea.Cmd {
+	return func() (msg tea.Msg) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				msg = gifExportDoneMsg{
+					outPath: outPath,
+					err:     fmt.Errorf("gif export panic: %v", rec),
+				}
+			}
+		}()
+
+		var err error
+		if len(frames) == 0 {
+			frames = []export.ASCIIGIFFrame{
+				{
+					ASCII:    renderContent,
+					Duration: 100 * time.Millisecond,
+				},
+			}
+		}
+		err = export.ASCIIFramesToGIF(frames, outPath, exportOptions)
+
+		msg = gifExportDoneMsg{
+			outPath: outPath,
+			err:     err,
+		}
+		return msg
+	}
+}
+
+func exportAsciiToPngCmd(outPath, renderContent string, exportOptions export.ASCIIExportOptions) tea.Cmd {
+	return func() (msg tea.Msg) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				msg = pngExportDoneMsg{
+					outPath: outPath,
+					err:     fmt.Errorf("png export panic: %v", rec),
+				}
+			}
+		}()
+
+		err := export.ASCIIToPNG(renderContent, outPath, exportOptions)
+		msg = pngExportDoneMsg{
+			outPath: outPath,
+			err:     err,
+		}
+		return msg
+	}
+}
+
+func (m *MezzotoneModel) toggleRenderViewFullscreen() {
+	if m.style.isRenderViewFullscreen {
+		m.renderView.Width = m.width - m.style.windowMargin
+	} else {
+		m.renderView.Width = m.width / 7 * 5
+	}
 }
