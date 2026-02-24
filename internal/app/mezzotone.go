@@ -26,9 +26,8 @@ import (
 )
 
 // TODO REORDER Layout IF TERMINAL width < height
-// FIXME for some fontsize image gets cut on right side
-// TODO image preview on selected file (maybe ?)
-// TODO maybe add fullscreenish to renderview
+// FIXME for some fontsize image gets cut on right/bottom - DONE
+// TODO add fullscreen to renderview - DONE
 // TODO add color toggle (current is no color)
 // todo make it ⭐prettier⭐
 

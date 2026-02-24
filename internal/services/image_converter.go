@@ -161,8 +161,8 @@ func getColsAndRows(img image.Image, textSize int, fontAspect float64) (cols, ro
 		charH = 16
 	}
 
-	cols = (imgW + charW - 1) / charW
-	rows = (imgH + charH - 1) / charH
+	cols = imgW / charW
+	rows = imgH / charH
 
 	if cols < 1 {
 		cols = 1
