@@ -448,10 +448,38 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.renderSettings.Confirm = true
 				return m, cmd
 			}
+			if m.currentActiveMenu == renderView {
+				m.renderView.PageDown()
+				return m, cmd
+			}
 		case "pgup":
 			if m.currentActiveMenu == renderOptionsMenu {
 				m.renderSettings.SetActive(0)
 				m.renderSettings.Confirm = false
+				return m, cmd
+			}
+			if m.currentActiveMenu == renderView {
+				m.renderView.PageUp()
+				return m, cmd
+			}
+		case "shift+up":
+			if m.currentActiveMenu == renderView {
+				m.renderView.PageUp()
+				return m, cmd
+			}
+		case "shift+down":
+			if m.currentActiveMenu == renderView {
+				m.renderView.PageDown()
+				return m, cmd
+			}
+		case "shift+left":
+			if m.currentActiveMenu == renderView {
+				m.renderView.SetXOffset(0)
+				return m, cmd
+			}
+		case "shift+right":
+			if m.currentActiveMenu == renderView {
+				m.renderView.SetXOffset(1 << 30)
 				return m, cmd
 			}
 		case "f":
