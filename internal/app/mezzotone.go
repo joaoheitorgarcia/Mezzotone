@@ -87,7 +87,7 @@ func NewMezzotoneModel() *MezzotoneModel {
 		windowMargin: 2,
 	}
 
-	runeMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS", "LOADING"}
+	runeMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS"}
 	renderSettingsItems := []ui.SettingItem{
 		{Label: "Text Size", Key: "textSize", Type: ui.TypeInt, Value: "10"},
 		{Label: "Font Aspect", Key: "fontAspect", Type: ui.TypeFloat, Value: "2.3"},

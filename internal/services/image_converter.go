@@ -46,7 +46,7 @@ func NewRenderOptions(
 	highContrast bool,
 	runeMode string,
 ) (RenderOptions, error) {
-	availableRuneMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS", "LOADING"}
+	availableRuneMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS"}
 	if !slices.Contains(availableRuneMode, runeMode) {
 		return RenderOptions{}, fmt.Errorf("invalid rune mode: %s", runeMode)
 	}
@@ -68,7 +68,6 @@ const unicodeRampDarkToBrightStr = "█▓▒░■□@&%$#*+=~:;!,\".^`' "
 const dotsRampDarkToBrightStr = "●∙•· "
 const rectanglesRampDarkToBrightStr = "█▓▒░ "
 const barsRampDarkToBrightStr = "█▇▆▅▄▃▂▁ "
-const loadingRampDarkToBrightStr = "⣿⣷⣧⣇⣆⣄⣀ "
 
 // Bright to Dark
 const asciiRampBrightToDarkStr = " .`^,:;Il!i><~+_?][}{1)(ftjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
@@ -76,7 +75,6 @@ const unicodeRampBrightToDarkStr = " '`^.\",!;:~=+*#$%&@□■░▒▓█"
 const dotsRampBrightToDarkStr = " ·•∙●"
 const rectanglesRampBrightToDarkStr = " ░▒▓█"
 const barsRampBrightToDarkStr = " ▁▂▃▄▅▆▇█"
-const loadingRampBrightToDarkStr = " ⣀⣄⣆⣇⣧⣷⣿"
 
 func ConvertImageToString(inputImg image.Image, renderOptions RenderOptions) ([][]rune, error) {
 	var outputChars [][]rune
@@ -307,12 +305,6 @@ func getRuneForLuminanceValue(luminance float64, runeMode string, reverseChars b
 			ramp = []rune(barsRampBrightToDarkStr)
 		} else {
 			ramp = []rune(barsRampDarkToBrightStr)
-		}
-	case "LOADING":
-		if reverseChars {
-			ramp = []rune(loadingRampBrightToDarkStr)
-		} else {
-			ramp = []rune(loadingRampDarkToBrightStr)
 		}
 	default:
 	case "ASCII":
