@@ -25,12 +25,6 @@ import (
 	"golang.design/x/clipboard"
 )
 
-// TODO REORDER Layout IF TERMINAL width < height
-// FIXME for some fontsize image gets cut on right/bottom - DONE
-// TODO add fullscreen to renderview - DONE
-// TODO add color toggle (current is no color)
-// todo make it ⭐prettier⭐
-
 type MezzotoneModel struct {
 	filePicker   filepicker.Model
 	selectedFile string
@@ -324,7 +318,6 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.currentActiveMenu == filePickerMenu {
-				//TODO ask for confimation
 				return m, tea.Quit
 			}
 			if m.currentActiveMenu == renderOptionsMenu {

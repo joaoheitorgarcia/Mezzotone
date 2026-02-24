@@ -19,8 +19,6 @@ import (
 //go:embed assets/NotoSansMono-VariableFont_wdth,wght.ttf
 var Font []byte
 
-// TODO MAKE EXPORT FONT BE PASSED AS ARG
-
 type ASCIIExportOptions struct {
 	FontSize     float64
 	DPI          float64
