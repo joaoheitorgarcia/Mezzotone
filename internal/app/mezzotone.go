@@ -92,6 +92,7 @@ func NewMezzotoneModel() *MezzotoneModel {
 		{Label: "Edge Threshold", Key: "edgeThreshold", Type: ui.TypeFloat, Value: "0.6"},
 		{Label: "Reverse Chars", Key: "reverseChars", Type: ui.TypeBool, Value: "TRUE"},
 		{Label: "High Contrast", Key: "highContrast", Type: ui.TypeBool, Value: "TRUE"},
+		{Label: "Render Color", Key: "renderColor", Type: ui.TypeBool, Value: "FALSE"},
 		{Label: "Rune Mode", Key: "runeMode", Type: ui.TypeEnum, Value: "ASCII", Enum: runeMode},
 	}
 	renderSettingsItemsSize = len(renderSettingsItems)
@@ -359,18 +360,20 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 
 						var gifRuneArrays [][][]rune
+						var gifColorArrays [][][]color.NRGBA
 						for _, frame := range frameArray {
-							runeArray, err := services.ConvertImageToString(frame, normalizedOptions)
+							runeArray, colorArray, err := services.ConvertImageToString(frame, normalizedOptions)
 							if err != nil {
 								m.updateMessageViewPortContent("⚠ "+err.Error(), true)
 								return m, cmd
 							}
 							gifRuneArrays = append(gifRuneArrays, runeArray)
+							gifColorArrays = append(gifColorArrays, colorArray)
 						}
 
 						var animationFrames []ui.AnimationFrame
 						for i, frameRuneArray := range gifRuneArrays {
-							frameASCII := services.ImageRuneArrayIntoString(frameRuneArray)
+							frameASCII := services.ImageRuneArrayIntoString(frameRuneArray, gifColorArrays[i], normalizedOptions.RenderColor)
 							animationFrames = append(
 								animationFrames,
 								ui.AnimationFrame{
@@ -399,7 +402,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					_ = services.Logger().Info(fmt.Sprintf("format: %s", format))
 
-					runeArray, err := services.ConvertImageToString(inputImg, normalizedOptions)
+					runeArray, colorArray, err := services.ConvertImageToString(inputImg, normalizedOptions)
 					if err != nil {
 						m.updateMessageViewPortContent("⚠ "+err.Error(), true)
 						return m, cmd
@@ -407,7 +410,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					m.gifAnimation.StopAnimation()
 					m.asciiGIFFrames = nil
-					m.renderContent = services.ImageRuneArrayIntoString(runeArray)
+					m.renderContent = services.ImageRuneArrayIntoString(runeArray, colorArray, normalizedOptions.RenderColor)
 					_ = services.Logger().Info(fmt.Sprintf("%s", m.renderContent))
 
 					if !m.helpVisible {
@@ -562,34 +565,30 @@ func (m *MezzotoneModel) safeFilePickerView() (out string) {
 func normalizeRenderOptionsForService(settingsValues []ui.SettingItem) (services.RenderOptions, error) {
 	var textSize int
 	var fontAspect, edgeThreshold float64
-	var directionalRender, reverseChars, highContrast bool
+	var directionalRender, reverseChars, highContrast, renderColor bool
 	var runeMode string
 
 	for _, item := range settingsValues {
 		switch item.Key {
 		case "textSize":
 			textSize, _ = strconv.Atoi(item.Value)
-
 		case "fontAspect":
 			fontAspect, _ = strconv.ParseFloat(item.Value, 2)
-
 		case "edgeThreshold":
 			edgeThreshold, _ = strconv.ParseFloat(item.Value, 2)
-
 		case "directionalRender":
 			directionalRender, _ = strconv.ParseBool(item.Value)
-
 		case "reverseChars":
 			reverseChars, _ = strconv.ParseBool(item.Value)
-
 		case "highContrast":
 			highContrast, _ = strconv.ParseBool(item.Value)
-
+		case "renderColor":
+			renderColor, _ = strconv.ParseBool(item.Value)
 		case "runeMode":
 			runeMode = item.Value
 		}
 	}
-	options, err := services.NewRenderOptions(textSize, fontAspect, directionalRender, edgeThreshold, reverseChars, highContrast, runeMode)
+	options, err := services.NewRenderOptions(textSize, fontAspect, directionalRender, edgeThreshold, reverseChars, highContrast, renderColor, runeMode)
 	if err != nil {
 		return services.RenderOptions{}, err
 	}
