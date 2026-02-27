@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"image/gif"
 	"image/png"
 	"os"
@@ -8,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"Mezzotone/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
@@ -28,6 +27,11 @@ func TestMezzotoneModelExportTxtSavesRenderedContentToHome(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.renderedImgOutput = renderedImgOutput{
+		renderedRunes: [][]rune{
+			[]rune("rendered-output"),
+		},
+	}
 
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
 
@@ -58,6 +62,11 @@ func TestMezzotoneModelExportPngCreatesValidPNG(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.renderedImgOutput = renderedImgOutput{
+		renderedRunes: [][]rune{
+			[]rune("rendered-output"),
+		},
+	}
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	if cmd == nil {
@@ -92,6 +101,17 @@ func TestMezzotoneModelExportGifCreatesValidGIF(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.renderedGifOutput = renderedGifOutput{
+		renderedRunes: [][][]rune{
+			{[]rune("rendered-output")},
+		},
+		renderedColor: [][][]color.NRGBA{
+			{{{R: 255, G: 255, B: 255, A: 255}}},
+		},
+		delayTimes: []time.Duration{
+			50 * time.Millisecond,
+		},
+	}
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	if cmd == nil {
@@ -126,9 +146,19 @@ func TestMezzotoneModelExportGifFromAnimationExportsMultipleFrames(t *testing.T)
 	m.currentActiveMenu = renderView
 	m.renderContent = "frame-zero"
 	m.style.leftColumnWidth = 120
-	m.asciiGIFFrames = []ui.AnimationFrame{
-		{Frame: "frame-one", Duration: 40 * time.Millisecond},
-		{Frame: "frame-two", Duration: 80 * time.Millisecond},
+	m.renderedGifOutput = renderedGifOutput{
+		renderedRunes: [][][]rune{
+			{[]rune("frame-one")},
+			{[]rune("frame-two")},
+		},
+		renderedColor: [][][]color.NRGBA{
+			{{{R: 255, G: 255, B: 255, A: 255}}},
+			{{{R: 255, G: 255, B: 255, A: 255}}},
+		},
+		delayTimes: []time.Duration{
+			40 * time.Millisecond,
+			80 * time.Millisecond,
+		},
 	}
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
