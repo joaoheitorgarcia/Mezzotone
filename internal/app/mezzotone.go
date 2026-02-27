@@ -8,14 +8,17 @@ import (
 	"image/gif"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/JoaoGarcia/Mezzotone/internal/export"
-	"github.com/JoaoGarcia/Mezzotone/internal/services"
-	"github.com/JoaoGarcia/Mezzotone/internal/termtext"
-	"github.com/JoaoGarcia/Mezzotone/internal/ui"
+	"Mezzotone/internal/export"
+	"Mezzotone/internal/services"
+	"Mezzotone/internal/termtext"
+	"Mezzotone/internal/ui"
+
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -24,12 +27,6 @@ import (
 	"github.com/google/uuid"
 	"golang.design/x/clipboard"
 )
-
-// TODO REORDER Layout IF TERMINAL width < height
-// FIXME for some fontsize image gets cut on right/bottom - DONE
-// TODO add fullscreen to renderview - DONE
-// TODO add color toggle (current is no color)
-// todo make it ⭐prettier⭐
 
 type MezzotoneModel struct {
 	filePicker   filepicker.Model
@@ -46,7 +43,9 @@ type MezzotoneModel struct {
 	helpVisible       bool
 	helpPreviousMenu  int
 	renderContent     string
-	asciiGIFFrames    []ui.AnimationFrame
+
+	renderedImgOutput renderedImgOutput
+	renderedGifOutput renderedGifOutput
 
 	gifAnimation ui.AnimationRenderer
 
@@ -66,6 +65,17 @@ type pngExportDoneMsg struct {
 	err     error
 }
 
+type renderedImgOutput struct {
+	renderedRunes [][]rune
+	renderedColor [][]color.NRGBA
+}
+
+type renderedGifOutput struct {
+	renderedRunes [][][]rune
+	renderedColor [][][]color.NRGBA
+	delayTimes    []time.Duration
+}
+
 type styleVariables struct {
 	windowMargin           int
 	leftColumnWidth        int
@@ -73,7 +83,15 @@ type styleVariables struct {
 }
 
 var renderSettingsItemsSize int
+
 var clipboardOK bool
+var clipboardWrite = clipboard.Write
+var clipboardCommands = [][]string{
+	{"wl-copy"},
+	{"xclip", "-selection", "clipboard"},
+	{"xsel", "--clipboard", "--input"},
+}
+
 var newUUID = uuid.New
 
 const (
@@ -97,6 +115,7 @@ func NewMezzotoneModel() *MezzotoneModel {
 		{Label: "Edge Threshold", Key: "edgeThreshold", Type: ui.TypeFloat, Value: "0.6"},
 		{Label: "Reverse Chars", Key: "reverseChars", Type: ui.TypeBool, Value: "TRUE"},
 		{Label: "High Contrast", Key: "highContrast", Type: ui.TypeBool, Value: "TRUE"},
+		{Label: "Render Color", Key: "renderColor", Type: ui.TypeBool, Value: "FALSE"},
 		{Label: "Rune Mode", Key: "runeMode", Type: ui.TypeEnum, Value: "ASCII", Enum: runeMode},
 	}
 	renderSettingsItemsSize = len(renderSettingsItems)
@@ -118,14 +137,14 @@ func NewMezzotoneModel() *MezzotoneModel {
 		Select:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
 	}
 
-	renderView := viewport.New(0, 0)
+	renderViewPort := viewport.New(0, 0)
 	leftColumn := viewport.New(0, 0)
 
 	messageViewPort := viewport.New(0, 3)
 
 	model := &MezzotoneModel{
 		filePicker:        fp,
-		renderView:        renderView,
+		renderView:        renderViewPort,
 		messageViewPort:   messageViewPort,
 		style:             windowStyles,
 		leftColumn:        leftColumn,
@@ -209,12 +228,10 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "c":
 			if m.currentActiveMenu == renderView {
-				if !clipboardOK {
-					m.updateMessageViewPortContent("Clipboard not available (init failed)", true)
+				if err := copyTextToClipboard(m.renderContent); err != nil {
+					m.updateMessageViewPortContent("⚠ "+err.Error(), true)
 					return m, nil
 				}
-
-				clipboard.Write(clipboard.FmtText, []byte(m.renderContent))
 				m.updateMessageViewPortContent("Successfully sent to clipboard !", false)
 				return m, nil
 			}
@@ -226,17 +243,16 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				generatedUuid := newUUID()
-				outPpath := filepath.Join(homeDir, "Mezzotone_"+generatedUuid.String()+".txt")
+				outPath := filepath.Join(homeDir, "Mezzotone_"+generatedUuid.String()+".txt")
 
-				err = export.ASCIItToTxT(outPpath, m.renderContent)
+				err = export.ASCIItToTxT(outPath, m.renderContent)
 				if err != nil {
 					m.updateMessageViewPortContent("⚠ "+err.Error(), true)
 					return m, nil
 				}
 
-				m.updateMessageViewPortContent("Successfully exported to "+outPpath+" !", false)
+				m.updateMessageViewPortContent("Successfully exported to "+outPath+" !", false)
 				return m, nil
-
 			}
 		case "i":
 			if m.currentActiveMenu == renderView {
@@ -260,9 +276,22 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					BG:           color.Black,
 					FG:           color.White,
 					TargetAspect: targetAspect,
+					RenderColor:  m.getRenderColor(),
 				}
+
 				m.updateMessageViewPortContent("Exporting image to "+outPath+" ...", false)
-				return m, exportAsciiToPngCmd(outPath, m.renderContent, exportOptions)
+
+				var render renderedImgOutput
+				if m.renderedImgOutput.renderedRunes == nil {
+					i := m.gifAnimation.GetcurrentFrameIndex()
+					render = renderedImgOutput{
+						renderedRunes: m.renderedGifOutput.renderedRunes[i],
+						renderedColor: m.renderedGifOutput.renderedColor[i],
+					}
+				} else {
+					render = m.renderedImgOutput
+				}
+				return m, exportAsciiToPngCmd(outPath, render, exportOptions)
 			}
 		case "g":
 			if m.currentActiveMenu == renderView {
@@ -286,17 +315,20 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					BG:           color.Black,
 					FG:           color.White,
 					TargetAspect: targetAspect,
+					RenderColor:  m.getRenderColor(),
 				}
 
-				gifFrames := make([]export.ASCIIGIFFrame, 0, len(m.asciiGIFFrames))
-				for _, frame := range m.asciiGIFFrames {
+				gifFrames := make([]export.ASCIIGIFFrame, 0, len(m.renderedGifOutput.renderedRunes))
+				for i := range m.renderedGifOutput.renderedRunes {
 					gifFrames = append(gifFrames, export.ASCIIGIFFrame{
-						ASCII:    frame.Frame,
-						Duration: frame.Duration,
+						FrameRunes:  m.renderedGifOutput.renderedRunes[i],
+						Duration:    m.renderedGifOutput.delayTimes[i],
+						FrameColors: m.renderedGifOutput.renderedColor[i],
 					})
 				}
+
 				m.updateMessageViewPortContent("Exporting gif to "+outPath+" ...", false)
-				return m, exportAsciiToGifCmd(outPath, m.renderContent, gifFrames, exportOptions)
+				return m, exportAsciiToGifCmd(outPath, gifFrames, exportOptions)
 			}
 		case "h":
 			if m.currentActiveMenu == renderOptionsMenu && m.renderSettings.Editing {
@@ -324,7 +356,6 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.currentActiveMenu == filePickerMenu {
-				//TODO ask for confimation
 				return m, tea.Quit
 			}
 			if m.currentActiveMenu == renderOptionsMenu {
@@ -357,26 +388,31 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 					_ = services.Logger().Info(fmt.Sprintf("Successfully Loaded: %s", m.selectedFile))
 
-					if IsGIF(m.selectedFile) {
-						frameArray, delays, err := SplitAnimatedGIF(f)
-						if err != nil {
-							m.updateMessageViewPortContent("⚠ "+err.Error(), true)
-							return m, cmd
-						}
-
-						var gifRuneArrays [][][]rune
-						for _, frame := range frameArray {
-							runeArray, err := services.ConvertImageToString(frame, normalizedOptions)
+						if IsGIF(m.selectedFile) {
+							frameArray, delays, err := SplitAnimatedGIF(f)
+							if err != nil {
+								m.updateMessageViewPortContent("⚠ "+err.Error(), true)
+								return m, cmd
+							}
+							var gifRuneArrays [][][]rune
+							var gifColorArrays [][][]color.NRGBA
+						for i, frame := range frameArray {
+							runeArray, colorArray, err := services.ConvertImageToString(frame, normalizedOptions)
 							if err != nil {
 								m.updateMessageViewPortContent("⚠ "+err.Error(), true)
 								return m, cmd
 							}
 							gifRuneArrays = append(gifRuneArrays, runeArray)
+							gifColorArrays = append(gifColorArrays, colorArray)
+
+							m.renderedGifOutput.renderedRunes = append(m.renderedGifOutput.renderedRunes, runeArray)
+							m.renderedGifOutput.renderedColor = append(m.renderedGifOutput.renderedColor, colorArray)
+							m.renderedGifOutput.delayTimes = append(m.renderedGifOutput.delayTimes, time.Duration(delays[i])*10*time.Millisecond)
 						}
 
 						var animationFrames []ui.AnimationFrame
 						for i, frameRuneArray := range gifRuneArrays {
-							frameASCII := services.ImageRuneArrayIntoString(frameRuneArray)
+							frameASCII := services.ImageRuneArrayIntoString(frameRuneArray, gifColorArrays[i], normalizedOptions.RenderColor)
 							animationFrames = append(
 								animationFrames,
 								ui.AnimationFrame{
@@ -390,9 +426,10 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						var escapeKeys []string
 						escapeKeys = append(escapeKeys, "esc")
 						gifAnimation := ui.NewAnimationRenderer(animationFrames, escapeKeys)
-
 						m.gifAnimation = gifAnimation
-						m.asciiGIFFrames = animationFrames
+
+						m.renderedImgOutput.renderedRunes = nil
+						m.renderedImgOutput.renderedColor = nil
 
 						return m, m.gifAnimation.StartAnimation
 					}
@@ -405,15 +442,18 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					_ = services.Logger().Info(fmt.Sprintf("format: %s", format))
 
-					runeArray, err := services.ConvertImageToString(inputImg, normalizedOptions)
+					runeArray, colorArray, err := services.ConvertImageToString(inputImg, normalizedOptions)
 					if err != nil {
 						m.updateMessageViewPortContent("⚠ "+err.Error(), true)
 						return m, cmd
 					}
 
-					m.gifAnimation.StopAnimation()
-					m.asciiGIFFrames = nil
-					m.renderContent = services.ImageRuneArrayIntoString(runeArray)
+						m.renderedImgOutput.renderedRunes = runeArray
+						m.renderedImgOutput.renderedColor = colorArray
+
+							m.gifAnimation.StopAnimation()
+
+					m.renderContent = services.ImageRuneArrayIntoString(runeArray, colorArray, normalizedOptions.RenderColor)
 					_ = services.Logger().Info(fmt.Sprintf("%s", m.renderContent))
 
 					if !m.helpVisible {
@@ -568,38 +608,44 @@ func (m *MezzotoneModel) safeFilePickerView() (out string) {
 func normalizeRenderOptionsForService(settingsValues []ui.SettingItem) (services.RenderOptions, error) {
 	var textSize int
 	var fontAspect, edgeThreshold float64
-	var directionalRender, reverseChars, highContrast bool
+	var directionalRender, reverseChars, highContrast, renderColor bool
 	var runeMode string
 
 	for _, item := range settingsValues {
 		switch item.Key {
 		case "textSize":
 			textSize, _ = strconv.Atoi(item.Value)
-
 		case "fontAspect":
 			fontAspect, _ = strconv.ParseFloat(item.Value, 2)
-
 		case "edgeThreshold":
 			edgeThreshold, _ = strconv.ParseFloat(item.Value, 2)
-
 		case "directionalRender":
 			directionalRender, _ = strconv.ParseBool(item.Value)
-
 		case "reverseChars":
 			reverseChars, _ = strconv.ParseBool(item.Value)
-
 		case "highContrast":
 			highContrast, _ = strconv.ParseBool(item.Value)
-
+		case "renderColor":
+			renderColor, _ = strconv.ParseBool(item.Value)
 		case "runeMode":
 			runeMode = item.Value
 		}
 	}
-	options, err := services.NewRenderOptions(textSize, fontAspect, directionalRender, edgeThreshold, reverseChars, highContrast, runeMode)
+	options, err := services.NewRenderOptions(textSize, fontAspect, directionalRender, edgeThreshold, reverseChars, highContrast, renderColor, runeMode)
 	if err != nil {
 		return services.RenderOptions{}, err
 	}
 	return options, nil
+}
+
+func (m *MezzotoneModel) getRenderColor() bool {
+	for _, item := range m.renderSettings.Items {
+		if item.Key == "renderColor" {
+			value, _ := strconv.ParseBool(item.Value)
+			return value
+		}
+	}
+	return false
 }
 
 func (m *MezzotoneModel) incrementCurrentActiveMenu() {
@@ -680,7 +726,7 @@ func IsGIF(path string) bool {
 	return format == "gif"
 }
 
-// SplitAnimatedGIF decodes an animated GIF and returns frames plus per-frame delays.
+// SplitAnimatedGIF decodes an animated GIF and returns frames plus per-frame delayTimes.
 // GIF frames are often partial/offset “patches”, so we simulate playback by drawing each frame onto a
 // full-size RGBA canvas and then clone the canvas after each draw so frames don’t share the same pixel buffer.
 func SplitAnimatedGIF(r io.Reader) (frames []image.Image, delays []int, err error) {
@@ -752,7 +798,7 @@ func cloneRGBA(src *image.RGBA) *image.RGBA {
 	return dst
 }
 
-func exportAsciiToGifCmd(outPath, renderContent string, frames []export.ASCIIGIFFrame, exportOptions export.ASCIIExportOptions) tea.Cmd {
+func exportAsciiToGifCmd(outPath string, frames []export.ASCIIGIFFrame, exportOptions export.ASCIIExportOptions) tea.Cmd {
 	return func() (msg tea.Msg) {
 		defer func() {
 			if rec := recover(); rec != nil {
@@ -763,16 +809,14 @@ func exportAsciiToGifCmd(outPath, renderContent string, frames []export.ASCIIGIF
 			}
 		}()
 
-		var err error
 		if len(frames) == 0 {
-			frames = []export.ASCIIGIFFrame{
-				{
-					ASCII:    renderContent,
-					Duration: 100 * time.Millisecond,
-				},
+			return gifExportDoneMsg{
+				outPath: outPath,
+				err:     fmt.Errorf("no rendered gif frames available to export"),
 			}
 		}
-		err = export.ASCIIFramesToGIF(frames, outPath, exportOptions)
+
+		err := export.ASCIIFramesToGIF(frames, outPath, exportOptions)
 
 		msg = gifExportDoneMsg{
 			outPath: outPath,
@@ -782,7 +826,7 @@ func exportAsciiToGifCmd(outPath, renderContent string, frames []export.ASCIIGIF
 	}
 }
 
-func exportAsciiToPngCmd(outPath, renderContent string, exportOptions export.ASCIIExportOptions) tea.Cmd {
+func exportAsciiToPngCmd(outPath string, imgOutput renderedImgOutput, exportOptions export.ASCIIExportOptions) tea.Cmd {
 	return func() (msg tea.Msg) {
 		defer func() {
 			if rec := recover(); rec != nil {
@@ -793,13 +837,39 @@ func exportAsciiToPngCmd(outPath, renderContent string, exportOptions export.ASC
 			}
 		}()
 
-		err := export.ASCIIToPNG(renderContent, outPath, exportOptions)
+		err := export.ASCIIToPNG(imgOutput.renderedRunes, imgOutput.renderedColor, outPath, exportOptions)
 		msg = pngExportDoneMsg{
 			outPath: outPath,
 			err:     err,
 		}
 		return msg
 	}
+}
+
+func copyTextToClipboard(content string) error {
+	cleanContent := content
+	if len(cleanContent) == 0 {
+		return fmt.Errorf("nothing to copy (render output is empty)")
+	}
+
+	if clipboardOK {
+		if changed := clipboardWrite(clipboard.FmtText, []byte(cleanContent)); changed != nil {
+			return nil
+		}
+	}
+
+	for _, command := range clipboardCommands {
+		if len(command) == 0 {
+			continue
+		}
+		cmd := exec.Command(command[0], command[1:]...)
+		cmd.Stdin = strings.NewReader(cleanContent)
+		if err := cmd.Run(); err == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("clipboard not available (init failed)")
 }
 
 func (m *MezzotoneModel) toggleRenderViewFullscreen() {

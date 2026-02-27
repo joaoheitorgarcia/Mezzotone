@@ -9,7 +9,6 @@ import (
 	"image/gif"
 	"os"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,8 +19,9 @@ import (
 )
 
 type ASCIIGIFFrame struct {
-	ASCII    string
-	Duration time.Duration
+	FrameRunes  [][]rune
+	Duration    time.Duration
+	FrameColors [][]color.NRGBA
 }
 
 func ASCIIFramesToGIF(frames []ASCIIGIFFrame, outPath string, opt ASCIIExportOptions) error {
@@ -62,7 +62,7 @@ func ASCIIFramesToGIF(frames []ASCIIGIFFrame, outPath string, opt ASCIIExportOpt
 			defer r.Close()
 
 			for frameIdx := range jobs {
-				img, err := r.Render(frames[frameIdx].ASCII)
+				img, err := r.RenderFrame(frames[frameIdx], opt.RenderColor)
 				if err != nil {
 					setErr(err)
 					continue
@@ -151,8 +151,8 @@ func newASCIIRenderer(opt ASCIIExportOptions) (*asciiRenderer, error) {
 	}
 
 	face, err := opentype.NewFace(tt, &opentype.FaceOptions{
-		Size:    opt.FontSize,
-		DPI:     opt.DPI,
+		Size:    float64(opt.FontSize),
+		DPI:     float64(opt.DPI),
 		Hinting: font.HintingFull,
 	})
 	if err != nil {
@@ -171,29 +171,38 @@ func (r *asciiRenderer) Close() {
 	}
 }
 
-func (r *asciiRenderer) Render(ascii string) (*image.RGBA, error) {
-	lines := strings.Split(strings.ReplaceAll(ascii, "\r\n", "\n"), "\n")
+func (r *asciiRenderer) RenderFrame(frame ASCIIGIFFrame, renderColor bool) (*image.RGBA, error) {
 	d := &font.Drawer{Face: r.face}
 
-	maxW := 0
-	for _, line := range lines {
-		w := d.MeasureString(line).Round()
-		if w > maxW {
-			maxW = w
-		}
-	}
 	metrics := r.face.Metrics()
 	lineH := metrics.Height.Round()
-	ascent := metrics.Ascent.Round()
+	ascent := metrics.Ascent.Ceil()
 
-	w := maxW
-	h := lineH * len(lines)
-	if w < 1 {
-		w = 1
+	rows := len(frame.FrameRunes)
+	cols := 0
+	for _, row := range frame.FrameRunes {
+		if len(row) > cols {
+			cols = len(row)
+		}
 	}
-	if h < 1 {
-		h = 1
+
+	if rows < 1 {
+		rows = 1
 	}
+	if cols < 1 {
+		cols = 1
+	}
+
+	cellW := d.MeasureString("M").Ceil()
+	if cellW < 1 {
+		cellW = 1
+	}
+	if lineH < 1 {
+		lineH = 1
+	}
+
+	w := cols * cellW
+	h := rows * lineH
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: r.opt.BG}, image.Point{}, draw.Src)
@@ -204,28 +213,35 @@ func (r *asciiRenderer) Render(ascii string) (*image.RGBA, error) {
 		Face: r.face,
 	}
 
-	y := ascent
-	for _, line := range lines {
-		d.Dot = fixed.P(0, y)
-		d.DrawString(line)
-		y += lineH
+	if !renderColor {
+		for y, row := range frame.FrameRunes {
+			baselineY := y*lineH + ascent
+			d.Dot = fixed.P(0, baselineY)
+			d.DrawString(string(row))
+		}
+	} else {
+		for y, row := range frame.FrameRunes {
+			baselineY := y*lineH + ascent
+			for x, r := range row {
+				d.Src = image.NewUniform(frame.FrameColors[y][x])
+				d.Dot = fixed.P(x*cellW, baselineY)
+				d.DrawString(string(r))
+			}
+		}
 	}
 
 	if r.opt.TargetAspect > 0 {
-		advM := d.MeasureString("M").Round()
-		if advM > 0 && lineH > 0 {
-			currentAspect := float64(advM) / float64(lineH)
-			scaleX := r.opt.TargetAspect / currentAspect
+		currentAspect := float64(cellW) / float64(lineH)
+		scaleX := r.opt.TargetAspect / currentAspect
 
-			if scaleX > 0.01 && scaleX < 100 {
-				newW := int(float64(img.Bounds().Dx()) * scaleX)
-				if newW < 1 {
-					newW = 1
-				}
-				scaled := image.NewRGBA(image.Rect(0, 0, newW, img.Bounds().Dy()))
-				xdraw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), img, img.Bounds(), draw.Over, nil)
-				img = scaled
+		if scaleX > 0.01 && scaleX < 100 {
+			newW := int(float64(img.Bounds().Dx()) * scaleX)
+			if newW < 1 {
+				newW = 1
 			}
+			scaled := image.NewRGBA(image.Rect(0, 0, newW, img.Bounds().Dy()))
+			xdraw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), img, img.Bounds(), draw.Over, nil)
+			img = scaled
 		}
 	}
 

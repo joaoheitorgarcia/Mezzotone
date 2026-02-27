@@ -6,7 +6,6 @@ import (
 	"image/draw"
 	"image/png"
 	"os"
-	"strings"
 
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
@@ -19,17 +18,16 @@ import (
 //go:embed assets/NotoSansMono-VariableFont_wdth,wght.ttf
 var Font []byte
 
-// TODO MAKE EXPORT FONT BE PASSED AS ARG
-
 type ASCIIExportOptions struct {
-	FontSize     float64
-	DPI          float64
+	FontSize     int
+	DPI          int
 	BG           color.Color
 	FG           color.Color
 	TargetAspect float64
+	RenderColor  bool
 }
 
-func ASCIIToPNG(ascii string, outPath string, opt ASCIIExportOptions) error {
+func ASCIIToPNG(runeArray [][]rune, colorArray [][]color.NRGBA, outPath string, opt ASCIIExportOptions) error {
 	if opt.DPI <= 0 {
 		opt.DPI = 72
 	}
@@ -49,8 +47,8 @@ func ASCIIToPNG(ascii string, outPath string, opt ASCIIExportOptions) error {
 	}
 
 	face, err := opentype.NewFace(tt, &opentype.FaceOptions{
-		Size:    opt.FontSize,
-		DPI:     opt.DPI,
+		Size:    float64(opt.FontSize),
+		DPI:     float64(opt.DPI),
 		Hinting: font.HintingFull,
 	})
 	if err != nil {
@@ -58,63 +56,74 @@ func ASCIIToPNG(ascii string, outPath string, opt ASCIIExportOptions) error {
 	}
 	defer face.Close()
 
-	lines := strings.Split(strings.ReplaceAll(ascii, "\r\n", "\n"), "\n")
-
 	d := &font.Drawer{Face: face}
-
-	maxW := 0
-	for _, line := range lines {
-		w := d.MeasureString(line).Round()
-		if w > maxW {
-			maxW = w
-		}
-	}
 
 	metrics := face.Metrics()
 	lineH := metrics.Height.Round()
-	ascent := metrics.Ascent.Round()
+	ascent := metrics.Ascent.Ceil()
 
-	w := maxW
-	h := lineH * len(lines)
-	if w < 1 {
-		w = 1
+	rows := len(runeArray)
+	cols := 0
+	for _, row := range runeArray {
+		if len(row) > cols {
+			cols = len(row)
+		}
 	}
-	if h < 1 {
-		h = 1
+
+	if rows < 1 {
+		rows = 1
 	}
+	if cols < 1 {
+		cols = 1
+	}
+
+	cellW := d.MeasureString("M").Ceil()
+	if cellW < 1 {
+		cellW = 1
+	}
+	if lineH < 1 {
+		lineH = 1
+	}
+
+	w := cols * cellW
+	h := rows * lineH
 
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: opt.BG}, image.Point{}, draw.Src)
 
-	d = &font.Drawer{
-		Dst:  img,
-		Src:  image.NewUniform(opt.FG),
-		Face: face,
-	}
+	d.Dst = img
+	d.Src = image.NewUniform(opt.FG)
 
-	y := ascent
-	for _, line := range lines {
-		d.Dot = fixed.P(0, y)
-		d.DrawString(line)
-		y += lineH
+	if !opt.RenderColor {
+		for y, row := range runeArray {
+			baselineY := y*lineH + ascent
+			d.Dot = fixed.P(0, baselineY)
+			d.DrawString(string(row))
+		}
+	} else {
+		for y, row := range runeArray {
+			baselineY := y*lineH + ascent
+			for x, r := range row {
+				d.Src = image.NewUniform(colorArray[y][x])
+				d.Dot = fixed.P(x*cellW, baselineY)
+				d.DrawString(string(r))
+			}
+		}
 	}
 
 	// aspect correction
 	if opt.TargetAspect > 0 {
-		advM := d.MeasureString("M").Round()
-		if advM > 0 && lineH > 0 {
-			currentAspect := float64(advM) / float64(lineH)
-			scaleX := opt.TargetAspect / currentAspect
+		currentAspect := float64(cellW) / float64(lineH)
+		scaleX := opt.TargetAspect / currentAspect
 
-			if scaleX > 0.01 && scaleX < 100 {
-				newW := int(float64(img.Bounds().Dx()) * scaleX)
-				if newW < 1 {
-					newW = 1
-				}
-				scaled := image.NewRGBA(image.Rect(0, 0, newW, img.Bounds().Dy()))
-				xdraw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), img, img.Bounds(), draw.Over, nil)
-				img = scaled
+		if scaleX > 0.01 && scaleX < 100 {
+			newW := int(float64(img.Bounds().Dx()) * scaleX)
+			if newW < 1 {
+				newW = 1
 			}
+			scaled := image.NewRGBA(image.Rect(0, 0, newW, img.Bounds().Dy()))
+			xdraw.ApproxBiLinear.Scale(scaled, scaled.Bounds(), img, img.Bounds(), draw.Over, nil)
+			img = scaled
 		}
 	}
 

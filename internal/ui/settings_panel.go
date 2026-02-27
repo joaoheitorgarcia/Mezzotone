@@ -5,7 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JoaoGarcia/Mezzotone/internal/termtext"
+	"Mezzotone/internal/termtext"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -69,12 +70,21 @@ func (m *SettingsPanel) Update(msg tea.Msg) (SettingsPanel, tea.Cmd) {
 				m.Editing = false
 				m.input.Blur()
 				m.input.SetValue("")
-				m.Items[m.cursor].Value = m.beforeEdit
+				if it, ok := m.currentItem(); ok {
+					it.Value = m.beforeEdit
+				}
 				return *m, nil
 
 			case "enter":
 				raw := strings.TrimSpace(m.input.Value())
-				it := &m.Items[m.cursor]
+				it, ok := m.currentItem()
+				if !ok {
+					m.errMsg = ""
+					m.Editing = false
+					m.input.Blur()
+					m.input.SetValue("")
+					return *m, nil
+				}
 
 				if err := validateAndSet(it, raw); err != nil {
 					m.errMsg = err.Error()
@@ -137,7 +147,10 @@ func (m *SettingsPanel) Update(msg tea.Msg) (SettingsPanel, tea.Cmd) {
 			if m.cursor == len(m.Items) {
 				return *m, nil
 			}
-			it := &m.Items[m.cursor]
+			it, ok := m.currentItem()
+			if !ok {
+				return *m, nil
+			}
 
 			if it.Type == TypeBool {
 				m.toggleBool()
@@ -210,7 +223,10 @@ func (m *SettingsPanel) View() string {
 }
 
 func (m *SettingsPanel) toggleBool() {
-	it := &m.Items[m.cursor]
+	it, ok := m.currentItem()
+	if !ok {
+		return
+	}
 	if it.Type != TypeBool {
 		return
 	}
@@ -223,7 +239,10 @@ func (m *SettingsPanel) toggleBool() {
 }
 
 func (m *SettingsPanel) stepEnum(dir int) {
-	it := &m.Items[m.cursor]
+	it, ok := m.currentItem()
+	if !ok {
+		return
+	}
 	if it.Type != TypeEnum || len(it.Enum) == 0 {
 		return
 	}
@@ -314,4 +333,11 @@ func (m *SettingsPanel) SetActive(i int) {
 
 func (m *SettingsPanel) ErrorMessage() string {
 	return m.errMsg
+}
+
+func (m *SettingsPanel) currentItem() (*SettingItem, bool) {
+	if m.cursor < 0 || m.cursor >= len(m.Items) {
+		return nil, false
+	}
+	return &m.Items[m.cursor], true
 }

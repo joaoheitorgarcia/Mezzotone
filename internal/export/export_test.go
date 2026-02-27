@@ -1,6 +1,7 @@
 package export
 
 import (
+	"image"
 	"image/color"
 	"image/gif"
 	"image/png"
@@ -11,11 +12,33 @@ import (
 	"time"
 )
 
+func asciiToRunes(s string) [][]rune {
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	out := make([][]rune, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, []rune(line))
+	}
+	return out
+}
+
+func imageHasPixelMatching(img image.Image, pred func(r, g, b, a uint32) bool) bool {
+	bounds := img.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, a := img.At(x, y).RGBA()
+			if pred(r, g, b, a) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func TestASCIIToPNGCreatesValidPNG(t *testing.T) {
 	tmpDir := t.TempDir()
 	outPath := filepath.Join(tmpDir, "out.png")
 
-	err := ASCIIToPNG("hello\nworld", outPath, ASCIIExportOptions{
+	err := ASCIIToPNG(asciiToRunes("hello\nworld"), nil, outPath, ASCIIExportOptions{
 		FontSize:     14,
 		DPI:          300,
 		BG:           color.Black,
@@ -46,8 +69,8 @@ func TestASCIIFramesToGIFCreatesAnimatedGIF(t *testing.T) {
 	outPath := filepath.Join(tmpDir, "out.gif")
 
 	frames := []ASCIIGIFFrame{
-		{ASCII: "frame one", Duration: 40 * time.Millisecond},
-		{ASCII: "frame two", Duration: 90 * time.Millisecond},
+		{FrameRunes: asciiToRunes("frame one"), Duration: 40 * time.Millisecond},
+		{FrameRunes: asciiToRunes("frame two"), Duration: 90 * time.Millisecond},
 	}
 
 	err := ASCIIFramesToGIF(frames, outPath, ASCIIExportOptions{
@@ -122,8 +145,8 @@ func TestASCIIFramesToGIFClampsDelayAndNormalizesFrameBounds(t *testing.T) {
 	outPath := filepath.Join(tmpDir, "normalized.gif")
 
 	frames := []ASCIIGIFFrame{
-		{ASCII: "short", Duration: 0},
-		{ASCII: "this frame is wider\nand taller", Duration: time.Millisecond},
+		{FrameRunes: asciiToRunes("short"), Duration: 0},
+		{FrameRunes: asciiToRunes("this frame is wider\nand taller"), Duration: time.Millisecond},
 	}
 
 	err := ASCIIFramesToGIF(frames, outPath, ASCIIExportOptions{
@@ -170,7 +193,7 @@ func TestASCIIToPNGEmptyInputStillCreatesImage(t *testing.T) {
 	tmpDir := t.TempDir()
 	outPath := filepath.Join(tmpDir, "empty.png")
 
-	if err := ASCIIToPNG("", outPath, ASCIIExportOptions{
+	if err := ASCIIToPNG(asciiToRunes(""), nil, outPath, ASCIIExportOptions{
 		FontSize: 14,
 		DPI:      300,
 		BG:       color.Black,
@@ -209,12 +232,112 @@ func TestASCIIToPNGEmptyInputStillCreatesImage(t *testing.T) {
 	}
 
 	// Smoke-check that decoding a newline-normalized payload remains valid.
-	if err := ASCIIToPNG(strings.ReplaceAll("a\r\nb", "\r\n", "\n"), filepath.Join(tmpDir, "normalized.png"), ASCIIExportOptions{
+	if err := ASCIIToPNG(asciiToRunes(strings.ReplaceAll("a\r\nb", "\r\n", "\n")), nil, filepath.Join(tmpDir, "normalized.png"), ASCIIExportOptions{
 		FontSize: 14,
 		DPI:      300,
 		BG:       color.Black,
 		FG:       color.White,
 	}); err != nil {
 		t.Fatalf("ASCIIToPNG failed for normalized newlines: %v", err)
+	}
+}
+
+func TestASCIIToPNGRenderColorUsesPerCellColor(t *testing.T) {
+	tmpDir := t.TempDir()
+	outPath := filepath.Join(tmpDir, "color.png")
+
+	runes := asciiToRunes("AB")
+	colors := [][]color.NRGBA{
+		{
+			{R: 255, G: 0, B: 0, A: 255},
+			{R: 0, G: 255, B: 0, A: 255},
+		},
+	}
+
+	if err := ASCIIToPNG(runes, colors, outPath, ASCIIExportOptions{
+		FontSize:    20,
+		DPI:         300,
+		BG:          color.Black,
+		FG:          color.White,
+		RenderColor: true,
+	}); err != nil {
+		t.Fatalf("ASCIIToPNG failed: %v", err)
+	}
+
+	f, err := os.Open(outPath)
+	if err != nil {
+		t.Fatalf("failed to open png output: %v", err)
+	}
+	defer f.Close()
+
+	img, err := png.Decode(f)
+	if err != nil {
+		t.Fatalf("failed to decode png output: %v", err)
+	}
+
+	hasRed := imageHasPixelMatching(img, func(r, g, b, a uint32) bool {
+		return a > 0 && r > g+0x2000 && r > b+0x2000
+	})
+	hasGreen := imageHasPixelMatching(img, func(r, g, b, a uint32) bool {
+		return a > 0 && g > r+0x2000 && g > b+0x2000
+	})
+	if !hasRed || !hasGreen {
+		t.Fatalf("expected rendered image to include both red-dominant and green-dominant glyph pixels (got red=%v green=%v)", hasRed, hasGreen)
+	}
+}
+
+func TestASCIIFramesToGIFRenderColorUsesPerFrameColors(t *testing.T) {
+	tmpDir := t.TempDir()
+	outPath := filepath.Join(tmpDir, "color.gif")
+
+	frames := []ASCIIGIFFrame{
+		{
+			FrameRunes: asciiToRunes("X"),
+			FrameColors: [][]color.NRGBA{
+				{{R: 255, G: 0, B: 0, A: 255}},
+			},
+			Duration: 20 * time.Millisecond,
+		},
+		{
+			FrameRunes: asciiToRunes("X"),
+			FrameColors: [][]color.NRGBA{
+				{{R: 0, G: 255, B: 0, A: 255}},
+			},
+			Duration: 20 * time.Millisecond,
+		},
+	}
+
+	if err := ASCIIFramesToGIF(frames, outPath, ASCIIExportOptions{
+		FontSize:    20,
+		DPI:         300,
+		BG:          color.Black,
+		FG:          color.White,
+		RenderColor: true,
+	}); err != nil {
+		t.Fatalf("ASCIIFramesToGIF failed: %v", err)
+	}
+
+	f, err := os.Open(outPath)
+	if err != nil {
+		t.Fatalf("failed to open gif output: %v", err)
+	}
+	defer f.Close()
+
+	g, err := gif.DecodeAll(f)
+	if err != nil {
+		t.Fatalf("failed to decode gif output: %v", err)
+	}
+	if len(g.Image) != 2 {
+		t.Fatalf("expected 2 gif frames, got %d", len(g.Image))
+	}
+
+	frame0HasRed := imageHasPixelMatching(g.Image[0], func(r, g, b, a uint32) bool {
+		return a > 0 && r > g+0x1000 && r > b+0x1000
+	})
+	frame1HasGreen := imageHasPixelMatching(g.Image[1], func(r, g, b, a uint32) bool {
+		return a > 0 && g > r+0x1000 && g > b+0x1000
+	})
+	if !frame0HasRed || !frame1HasGreen {
+		t.Fatalf("expected frame 0 to contain red-dominant pixels and frame 1 to contain green-dominant pixels (got red=%v green=%v)", frame0HasRed, frame1HasGreen)
 	}
 }

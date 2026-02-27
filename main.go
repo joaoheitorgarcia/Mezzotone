@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/JoaoGarcia/Mezzotone/internal/app"
-	"github.com/JoaoGarcia/Mezzotone/internal/services"
+	"Mezzotone/internal/app"
+	"Mezzotone/internal/services"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 

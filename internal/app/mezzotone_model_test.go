@@ -4,7 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JoaoGarcia/Mezzotone/internal/app"
+	"Mezzotone/internal/app"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 

@@ -3,6 +3,7 @@ package services
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"image"
 	"image/color"
@@ -11,6 +12,7 @@ import (
 	_ "image/png"
 	"math"
 
+	"github.com/charmbracelet/lipgloss"
 	_ "golang.org/x/image/bmp"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
@@ -34,6 +36,7 @@ type RenderOptions struct {
 	reverseChars bool
 	// highContrast: optional contrast curve applied after cell luminance averaging.
 	highContrast bool
+	RenderColor  bool
 	runeMode     string
 }
 
@@ -44,6 +47,7 @@ func NewRenderOptions(
 	edgeThreshold float64,
 	reverseChars bool,
 	highContrast bool,
+	renderColor bool,
 	runeMode string,
 ) (RenderOptions, error) {
 	availableRuneMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS"}
@@ -58,6 +62,7 @@ func NewRenderOptions(
 		edgeThreshold:     edgeThreshold,
 		reverseChars:      reverseChars,
 		highContrast:      highContrast,
+		RenderColor:       renderColor,
 		runeMode:          runeMode,
 	}, nil
 }
@@ -76,8 +81,9 @@ const dotsRampBrightToDarkStr = " ·•∙●"
 const rectanglesRampBrightToDarkStr = " ░▒▓█"
 const barsRampBrightToDarkStr = " ▁▂▃▄▅▆▇█"
 
-func ConvertImageToString(inputImg image.Image, renderOptions RenderOptions) ([][]rune, error) {
+func ConvertImageToString(inputImg image.Image, renderOptions RenderOptions) ([][]rune, [][]color.NRGBA, error) {
 	var outputChars [][]rune
+	var averageColorGrid [][]color.NRGBA
 
 	// Compute grid resolution (cols x rows) based on image size + character cell size.
 	cols, rows := getColsAndRows(inputImg, renderOptions.textSize, renderOptions.fontAspect)
@@ -95,13 +101,23 @@ func ConvertImageToString(inputImg image.Image, renderOptions RenderOptions) ([]
 		outputChars[r] = make([]rune, cols)
 	}
 
+	averageColorGrid = make([][]color.NRGBA, rows)
+	for r := 0; r < rows; r++ {
+		averageColorGrid[r] = make([]color.NRGBA, cols)
+	}
+
 	// Build a luminance grid (rows x cols) where each cell is 0..1.
 	// Each cell luminance is computed by averaging pixels in the corresponding image region.
 	luminanceGrid, err := buildLuminanceGrid(inputImg, cols, rows, renderOptions.highContrast)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	_ = Logger().Info(fmt.Sprintf("Successfully Build LumaGrid"))
+
+	if renderOptions.RenderColor {
+		averageColorGrid = buildAverageColorGrid(inputImg, cols, rows)
+		_ = Logger().Info(fmt.Sprintf("Successfully Build averageColorGrid"))
+	}
 
 	edgeThreshold := 0.0
 	edgeInfos := make([][]edgeInfo, 0)
@@ -132,19 +148,37 @@ func ConvertImageToString(inputImg image.Image, renderOptions RenderOptions) ([]
 	}
 
 	_ = Logger().Info(fmt.Sprintf("Finished image conversion"))
-	return outputChars, nil
+	return outputChars, averageColorGrid, nil
 }
 
-func ImageRuneArrayIntoString(runeArray [][]rune) string {
-	outpurString := ""
-	for x := 0; x < len(runeArray); x++ {
-		for y := 0; y < len(runeArray[x]); y++ {
-			outpurString += string(runeArray[x][y])
+func ImageRuneArrayIntoString(runeArray [][]rune, colorArray [][]color.NRGBA, renderColor bool) string {
+	var outputString strings.Builder
+
+	for x := range runeArray {
+		for y, r := range runeArray[x] {
+			if renderColor && (x < len(colorArray) && y < len(colorArray[x])) {
+				c := colorArray[x][y]
+				s := lipgloss.NewStyle().
+					Foreground(lipgloss.Color(cToHex(c)))
+				outputString.WriteString(s.Render(string(r)))
+			} else {
+				outputString.WriteRune(r)
+			}
 		}
-		outpurString += "\n"
+		outputString.WriteByte('\n')
 	}
 
-	return outpurString
+	return outputString.String()
+}
+
+func cToHex(c color.NRGBA) string {
+	const hex = "0123456789ABCDEF"
+	return string([]byte{
+		'#',
+		hex[c.R>>4], hex[c.R&0x0F],
+		hex[c.G>>4], hex[c.G&0x0F],
+		hex[c.B>>4], hex[c.B&0x0F],
+	})
 }
 
 // Calculates Columns and Rows for given TextSize and FontAspect
@@ -240,7 +274,8 @@ func buildLuminanceGrid(inputImg image.Image, cols, rows int, highContrast bool)
 					}
 
 					// Luminance is computed as 0..1.
-					pixelLuminance := calculateLuminance(c.R, c.G, c.B)
+					luminance := 0.2126*float64(c.R) + 0.7152*float64(c.G) + 0.0722*float64(c.B)
+					pixelLuminance := luminance / 255.0
 					lumaSum += pixelLuminance
 					sampleCount++
 				}
@@ -267,14 +302,88 @@ func buildLuminanceGrid(inputImg image.Image, cols, rows int, highContrast bool)
 	return grid, nil
 }
 
-/*
-Calculates luminance from rgb values and normalizes them from 0..255 into 0..1
+func buildAverageColorGrid(inputImg image.Image, cols, rows int) [][]color.NRGBA {
+	imgBounds := inputImg.Bounds()
+	imgWidth, imgHeight := imgBounds.Dx(), imgBounds.Dy()
 
-	Uses standard relative luminance weights (Rec.709 / sRGB), where green contributes the most to perceived brightness
-*/
-func calculateLuminance(red uint8, green uint8, blue uint8) float64 {
-	luminance := 0.2126*float64(red) + 0.7152*float64(green) + 0.0722*float64(blue)
-	return luminance / 255.0
+	cellWidth := imgWidth / cols
+	cellHeight := imgHeight / rows
+
+	if cellWidth <= 0 {
+		cellWidth = 8
+	}
+	if cellHeight <= 0 {
+		cellHeight = 16
+	}
+
+	colorGrid := make([][]color.NRGBA, rows)
+	for gridRow := 0; gridRow < rows; gridRow++ {
+		colorGrid[gridRow] = make([]color.NRGBA, cols)
+	}
+
+	for gridRow := 0; gridRow < rows; gridRow++ {
+		// Pixel Y-range for this grid row.
+		cellRowPixelStartY := gridRow * cellHeight
+		cellRowPixelEndY := cellRowPixelStartY + cellHeight
+		if cellRowPixelStartY >= imgHeight {
+			cellRowPixelStartY = imgHeight
+		}
+		if cellRowPixelEndY > imgHeight {
+			cellRowPixelEndY = imgHeight
+		}
+
+		for gridCol := 0; gridCol < cols; gridCol++ {
+			// Pixel X-range for this grid column
+			cellColPixelStartX := gridCol * cellWidth
+			cellColPixelEndX := cellColPixelStartX + cellWidth
+			if cellColPixelStartX >= imgWidth {
+				cellColPixelStartX = imgWidth
+			}
+			if cellColPixelEndX > imgWidth {
+				cellColPixelEndX = imgWidth
+			}
+
+			// Guard (degenerate cell).
+			if cellColPixelEndX <= cellColPixelStartX || cellRowPixelEndY <= cellRowPixelStartY {
+				colorGrid[gridRow][gridCol] = color.NRGBA{R: 0, G: 0, B: 0, A: 0}
+				continue
+			}
+
+			var rSum, gSum, bSum float64
+			var sampleCount float64
+
+			for y := cellRowPixelStartY; y < cellRowPixelEndY; y++ {
+				for x := cellColPixelStartX; x < cellColPixelEndX; x++ {
+					c := color.NRGBAModel.Convert(
+						inputImg.At(imgBounds.Min.X+x, imgBounds.Min.Y+y),
+					).(color.NRGBA)
+
+					// Skip mostly transparent pixels to prevent background bleed.
+					if c.A < 10 {
+						continue
+					}
+
+					rSum += float64(c.R)
+					gSum += float64(c.G)
+					bSum += float64(c.B)
+					sampleCount++
+				}
+			}
+
+			if sampleCount == 0 {
+				colorGrid[gridRow][gridCol] = color.NRGBA{R: 0, G: 0, B: 0, A: 255}
+			} else {
+				colorGrid[gridRow][gridCol] = color.NRGBA{
+					R: uint8(rSum / sampleCount),
+					G: uint8(gSum / sampleCount),
+					B: uint8(bSum / sampleCount),
+					A: 255,
+				}
+			}
+		}
+	}
+
+	return colorGrid
 }
 
 // Get the rune correspondent to luminance in selected ramp

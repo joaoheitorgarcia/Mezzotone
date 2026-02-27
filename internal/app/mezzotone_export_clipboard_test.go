@@ -1,6 +1,7 @@
 package app
 
 import (
+	"image/color"
 	"image/gif"
 	"image/png"
 	"os"
@@ -9,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JoaoGarcia/Mezzotone/internal/ui"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
+	"golang.design/x/clipboard"
 )
 
 func TestMezzotoneModelExportTxtSavesRenderedContentToHome(t *testing.T) {
@@ -26,6 +27,11 @@ func TestMezzotoneModelExportTxtSavesRenderedContentToHome(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.renderedImgOutput = renderedImgOutput{
+		renderedRunes: [][]rune{
+			[]rune("rendered-output"),
+		},
+	}
 
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
 
@@ -56,6 +62,11 @@ func TestMezzotoneModelExportPngCreatesValidPNG(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.renderedImgOutput = renderedImgOutput{
+		renderedRunes: [][]rune{
+			[]rune("rendered-output"),
+		},
+	}
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	if cmd == nil {
@@ -90,6 +101,17 @@ func TestMezzotoneModelExportGifCreatesValidGIF(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.renderedGifOutput = renderedGifOutput{
+		renderedRunes: [][][]rune{
+			{[]rune("rendered-output")},
+		},
+		renderedColor: [][][]color.NRGBA{
+			{{{R: 255, G: 255, B: 255, A: 255}}},
+		},
+		delayTimes: []time.Duration{
+			50 * time.Millisecond,
+		},
+	}
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
 	if cmd == nil {
@@ -124,9 +146,19 @@ func TestMezzotoneModelExportGifFromAnimationExportsMultipleFrames(t *testing.T)
 	m.currentActiveMenu = renderView
 	m.renderContent = "frame-zero"
 	m.style.leftColumnWidth = 120
-	m.asciiGIFFrames = []ui.AnimationFrame{
-		{Frame: "frame-one", Duration: 40 * time.Millisecond},
-		{Frame: "frame-two", Duration: 80 * time.Millisecond},
+	m.renderedGifOutput = renderedGifOutput{
+		renderedRunes: [][][]rune{
+			{[]rune("frame-one")},
+			{[]rune("frame-two")},
+		},
+		renderedColor: [][][]color.NRGBA{
+			{{{R: 255, G: 255, B: 255, A: 255}}},
+			{{{R: 255, G: 255, B: 255, A: 255}}},
+		},
+		delayTimes: []time.Duration{
+			40 * time.Millisecond,
+			80 * time.Millisecond,
+		},
 	}
 
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
@@ -154,15 +186,73 @@ func TestMezzotoneModelExportGifFromAnimationExportsMultipleFrames(t *testing.T)
 func TestMezzotoneModelCopyToClipboardWhenUnavailableShowsError(t *testing.T) {
 	previousClipboardOK := clipboardOK
 	t.Cleanup(func() { clipboardOK = previousClipboardOK })
+	previousClipboardCommands := clipboardCommands
+	t.Cleanup(func() { clipboardCommands = previousClipboardCommands })
 
 	m := NewMezzotoneModel()
 	m.currentActiveMenu = renderView
+	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
 	clipboardOK = false
+	clipboardCommands = nil
 
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
 
-	if !strings.Contains(m.messageViewPort.View(), "Clipboard not available (init failed)") {
+	if !strings.Contains(strings.ToLower(m.messageViewPort.View()), "clipboard not available (init failed)") {
 		t.Fatalf("expected clipboard unavailable message, got %q", m.messageViewPort.View())
+	}
+}
+
+func TestMezzotoneModelCopyToClipboardWithEmptyRenderShowsError(t *testing.T) {
+	previousClipboardOK := clipboardOK
+	t.Cleanup(func() { clipboardOK = previousClipboardOK })
+	previousClipboardCommands := clipboardCommands
+	t.Cleanup(func() { clipboardCommands = previousClipboardCommands })
+
+	m := NewMezzotoneModel()
+	m.currentActiveMenu = renderView
+	m.renderContent = ""
+	m.style.leftColumnWidth = 120
+	clipboardOK = false
+	clipboardCommands = nil
+
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+
+	if !strings.Contains(m.messageViewPort.View(), "nothing to copy") {
+		t.Fatalf("expected empty render content message, got %q", m.messageViewPort.View())
+	}
+}
+
+func TestCopyTextToClipboardKeepsContentAsIs(t *testing.T) {
+	previousClipboardOK := clipboardOK
+	t.Cleanup(func() { clipboardOK = previousClipboardOK })
+	previousClipboardWrite := clipboardWrite
+	t.Cleanup(func() { clipboardWrite = previousClipboardWrite })
+	previousClipboardCommands := clipboardCommands
+	t.Cleanup(func() { clipboardCommands = previousClipboardCommands })
+
+	clipboardOK = true
+	clipboardCommands = nil
+
+	var gotFormat clipboard.Format
+	var gotData []byte
+	clipboardWrite = func(format clipboard.Format, data []byte) <-chan struct{} {
+		gotFormat = format
+		gotData = append([]byte(nil), data...)
+		done := make(chan struct{}, 1)
+		done <- struct{}{}
+		close(done)
+		return done
+	}
+
+	colored := "\x1b[38;2;255;0;0mAB\x1b[0m\nC"
+	if err := copyTextToClipboard(colored); err != nil {
+		t.Fatalf("expected copy to succeed, got error: %v", err)
+	}
+	if gotFormat != clipboard.FmtText {
+		t.Fatalf("expected clipboard text format, got %v", gotFormat)
+	}
+	if string(gotData) != colored {
+		t.Fatalf("expected copied content %q, got %q", colored, string(gotData))
 	}
 }
