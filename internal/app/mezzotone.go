@@ -42,6 +42,7 @@ type MezzotoneModel struct {
 	currentActiveMenu int
 	helpVisible       bool
 	helpPreviousMenu  int
+	isQuitting        bool
 	renderContent     string
 
 	renderedImgOutput renderedImgOutput
@@ -268,6 +269,7 @@ func NewMezzotoneModel() *MezzotoneModel {
 		renderSettings:    renderSettingsModel,
 		currentActiveMenu: filePickerMenu,
 		helpPreviousMenu:  filePickerMenu,
+		isQuitting:        false,
 	}
 	model.updateMessageViewPortContent("Select image or gif to convert:", false)
 
@@ -344,6 +346,10 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.style.isRenderViewFullscreen && msg.String() != "f" && msg.String() != "ctrl+c" {
 			return m, nil
+		}
+		if m.currentActiveMenu == filePickerMenu && m.isQuitting && msg.Type != tea.KeyEsc {
+			m.isQuitting = false
+			m.updateMessageViewPortContent("Select image or gif to convert:", false)
 		}
 		switch msg.String() {
 		case "c":
@@ -476,7 +482,12 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.currentActiveMenu == filePickerMenu {
-				return m, tea.Quit
+				if m.isQuitting {
+					return m, tea.Quit
+				}
+				m.isQuitting = true
+				m.updateMessageViewPortContent("Press esc again to quit", false)
+				return m, nil
 			}
 			if m.currentActiveMenu == renderOptionsMenu {
 				if !m.renderSettings.Editing {
