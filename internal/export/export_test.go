@@ -121,6 +121,40 @@ func TestASCIIFramesToGIFNoFramesReturnsError(t *testing.T) {
 	}
 }
 
+func TestASCIIToPNGInvalidFontPathReturnsError(t *testing.T) {
+	tmpDir := t.TempDir()
+	outPath := filepath.Join(tmpDir, "out.png")
+
+	err := ASCIIToPNG(asciiToRunes("test"), nil, outPath, ASCIIExportOptions{
+		FontSize:    14,
+		DPI:         300,
+		BG:          color.Black,
+		FG:          color.White,
+		FontTTFPath: filepath.Join(tmpDir, "missing.ttf"),
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing custom font path")
+	}
+}
+
+func TestASCIIFramesToGIFInvalidFontPathReturnsError(t *testing.T) {
+	tmpDir := t.TempDir()
+	outPath := filepath.Join(tmpDir, "out.gif")
+
+	err := ASCIIFramesToGIF([]ASCIIGIFFrame{
+		{FrameRunes: asciiToRunes("test"), Duration: 10 * time.Millisecond},
+	}, outPath, ASCIIExportOptions{
+		FontSize:    14,
+		DPI:         300,
+		BG:          color.Black,
+		FG:          color.White,
+		FontTTFPath: filepath.Join(tmpDir, "missing.ttf"),
+	})
+	if err == nil {
+		t.Fatalf("expected error for missing custom font path")
+	}
+}
+
 func TestASCIIToTxtWritesContent(t *testing.T) {
 	tmpDir := t.TempDir()
 	outPath := filepath.Join(tmpDir, "out.txt")

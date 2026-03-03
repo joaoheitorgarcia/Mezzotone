@@ -23,8 +23,22 @@ type ASCIIExportOptions struct {
 	DPI          int
 	BG           color.Color
 	FG           color.Color
+	FontTTFPath  string
 	TargetAspect float64
 	RenderColor  bool
+}
+
+func loadExportFontBytes(fontPath string) ([]byte, error) {
+	if fontPath == "" {
+		return Font, nil
+	}
+
+	fontBytes, err := os.ReadFile(fontPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return fontBytes, nil
 }
 
 func ASCIIToPNG(runeArray [][]rune, colorArray [][]color.NRGBA, outPath string, opt ASCIIExportOptions) error {
@@ -41,7 +55,12 @@ func ASCIIToPNG(runeArray [][]rune, colorArray [][]color.NRGBA, outPath string, 
 		opt.FG = color.White
 	}
 
-	tt, err := opentype.Parse(Font)
+	fontBytes, err := loadExportFontBytes(opt.FontTTFPath)
+	if err != nil {
+		return err
+	}
+
+	tt, err := opentype.Parse(fontBytes)
 	if err != nil {
 		return err
 	}
