@@ -145,7 +145,12 @@ func newASCIIRenderer(opt ASCIIExportOptions) (*asciiRenderer, error) {
 		opt.FG = color.White
 	}
 
-	tt, err := opentype.Parse(Font)
+	fontBytes, err := loadExportFontBytes(opt.FontTTFPath)
+	if err != nil {
+		return nil, err
+	}
+
+	tt, err := opentype.Parse(fontBytes)
 	if err != nil {
 		return nil, err
 	}

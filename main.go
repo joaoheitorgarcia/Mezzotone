@@ -13,6 +13,7 @@ import (
 
 func main() {
 	debug := flag.Bool("debug", false, "enable debug logging")
+	fontTTF := flag.String("font-ttf", "", "path to a .ttf font used for image/gif export rendering")
 	flag.Parse()
 	if *debug {
 		err := services.InitLogger("logs.log")
@@ -21,7 +22,9 @@ func main() {
 		}
 	}
 
-	p := tea.NewProgram(app.NewMezzotoneModel(), tea.WithAltScreen())
+	p := tea.NewProgram(app.NewMezzotoneModelWithConfig(app.MezzotoneModelConfig{
+		ExportFontTTFPath: *fontTTF,
+	}), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		_ = services.Logger().Error("Unexpected Error. Unable to recover")
 		fmt.Printf("An unexpected error has occurred.\n")
