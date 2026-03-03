@@ -32,17 +32,65 @@ func TestMezzotoneModelWindowResizeRendersView(t *testing.T) {
 	}
 }
 
-func TestMezzotoneModelEscFromFilePickerReturnsQuitCmd(t *testing.T) {
+func TestMezzotoneModelEscFromFilePickerRequiresDoubleEscToQuit(t *testing.T) {
 	m := app.NewMezzotoneModel()
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if cmd == nil {
-		t.Fatalf("expected quit command on esc from file picker")
+	if cmd != nil {
+		t.Fatalf("expected first esc from file picker to not quit")
 	}
 
-	_ = updated
+	updatedModel, ok := updated.(*app.MezzotoneModel)
+	if !ok {
+		t.Fatalf("expected updated model type *app.MezzotoneModel")
+	}
+
+	updated, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatalf("expected quit command on second esc from file picker")
+	}
+
 	if msg := cmd(); msg == nil {
 		t.Fatalf("expected quit command to return a message")
+	}
+}
+
+func TestMezzotoneModelEscQuitIsCanceledByOtherKey(t *testing.T) {
+	m := app.NewMezzotoneModel()
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatalf("expected first esc from file picker to not quit")
+	}
+
+	updatedModel, ok := updated.(*app.MezzotoneModel)
+	if !ok {
+		t.Fatalf("expected updated model type *app.MezzotoneModel")
+	}
+
+	updated, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if cmd != nil {
+		t.Fatalf("expected non-esc key to not quit")
+	}
+
+	updatedModel, ok = updated.(*app.MezzotoneModel)
+	if !ok {
+		t.Fatalf("expected updated model type *app.MezzotoneModel")
+	}
+
+	updated, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatalf("expected esc after reset to not quit")
+	}
+
+	updatedModel, ok = updated.(*app.MezzotoneModel)
+	if !ok {
+		t.Fatalf("expected updated model type *app.MezzotoneModel")
+	}
+
+	_, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatalf("expected second esc after reset to quit")
 	}
 }
 
