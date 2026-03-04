@@ -6,8 +6,7 @@
 
 Mezzotone is a terminal UI (TUI) app written in Go that converts images and GIFs into ASCII/Unicode art.
 
-<img width="1866" height="1000" alt="image" src="https://github.com/user-attachments/assets/fc9dbbe5-bad2-4d3f-b13d-1d6b532aa53d" />
-
+<img width="1865" height="1002" alt="image" src="https://github.com/user-attachments/assets/731ab90b-afbe-4bee-a0fb-36875029db84" />
 
 ## Features
 
