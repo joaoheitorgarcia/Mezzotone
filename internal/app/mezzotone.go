@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"Mezzotone/internal/export"
-	"Mezzotone/internal/services"
-	"Mezzotone/internal/termtext"
-	"Mezzotone/internal/ui"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/export"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/services"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/key"

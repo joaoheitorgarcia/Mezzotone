@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"Mezzotone/internal/termtext"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

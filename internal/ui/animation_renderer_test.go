@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"Mezzotone/internal/ui"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"Mezzotone/internal/services"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/services"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
