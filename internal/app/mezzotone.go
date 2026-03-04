@@ -120,6 +120,7 @@ type styleColors struct {
 }
 
 var renderSettingsItemsSize int
+var currentMessage string
 
 var clipboardOK bool
 var clipboardWrite = clipboard.Write
@@ -349,7 +350,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.filePicker.SetHeight(computedFilePickerHeight)
 
 		m.toggleRenderViewFullscreen()
-		m.updateMessageViewPortContent("Select image or gif to convert:", false)
+		m.updateMessageViewPortContent(currentMessage, false)
 
 		return m, nil
 
@@ -812,6 +813,8 @@ func (m *MezzotoneModel) updateMessageTextOnMenuChange() {
 }
 
 func (m *MezzotoneModel) updateMessageViewPortContent(messageViewContent string, isError bool) {
+	currentMessage = messageViewContent
+
 	if isError {
 		messageViewContent = m.style.messageViewStyle.errorStyle.Render(messageViewContent)
 	} else {
