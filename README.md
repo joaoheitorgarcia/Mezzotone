@@ -1,4 +1,4 @@
-[![Version](https://img.shields.io/badge/Version-v0.2.0-blue.svg)](https://github.com/JoaoHeitorGarcia/Mezzotone/releases)
+[![Version](https://img.shields.io/badge/Version-v1.0.2-blue.svg)](https://github.com/JoaoHeitorGarcia/Mezzotone/releases)
 [![Powered by Bubble Tea](https://img.shields.io/badge/Powered_by-Bubble_Tea-7a4a8f)](https://github.com/charmbracelet/bubbletea)
 [![Powered by Go](https://img.shields.io/badge/Powered_by-Go-7a4a8f)](https://github.com/golang/go)
 
