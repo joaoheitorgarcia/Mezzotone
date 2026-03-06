@@ -13,7 +13,9 @@ func TruncateLinesANSI(s string, maxWidth int) string {
 
 	lines := strings.Split(s, "\n")
 	for i := range lines {
-		lines[i] = ansi.Truncate(lines[i], maxWidth, "…")
+		if ansi.StringWidth(lines[i]) > maxWidth {
+			lines[i] = ansi.Truncate(lines[i], maxWidth, "…")
+		}
 	}
 	return strings.Join(lines, "\n")
 }

@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 func helpBinding(key, description string, keyStyle, descriptionStyle lipgloss.Style) string {
@@ -68,7 +68,6 @@ func buildRenderHelpText(style styleVariables) string {
 		"",
 		sectionStyle.Render("Font Aspect"),
 		"  " + descriptionStyle.Render("Character height ratio vs width to match terminal font shape."),
-		"  " + descriptionStyle.Render("When Exporting to image or gif, this will flatten the font to this ratio."),
 		"",
 		sectionStyle.Render("Directional Render"),
 		"  " + descriptionStyle.Render("Uses edge direction to place oriented glyphs on strong edges."),

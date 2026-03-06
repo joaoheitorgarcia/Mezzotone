@@ -10,10 +10,18 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 	"golang.design/x/clipboard"
 )
+
+func keyChar(ch string) tea.KeyPressMsg {
+	var code rune
+	if len(ch) > 0 {
+		code = []rune(ch)[0]
+	}
+	return tea.KeyPressMsg(tea.Key{Text: ch, Code: code})
+}
 
 func TestMezzotoneModelExportTxtSavesRenderedContentToHome(t *testing.T) {
 	tmpHome := t.TempDir()
@@ -27,13 +35,15 @@ func TestMezzotoneModelExportTxtSavesRenderedContentToHome(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.messageViewPort.SetWidth(120)
+	m.messageViewPort.SetHeight(3)
 	m.renderedImgOutput = renderedImgOutput{
 		renderedRunes: [][]rune{
 			[]rune("rendered-output"),
 		},
 	}
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	_, _ = m.Update(keyChar("t"))
 
 	exportPath := filepath.Join(tmpHome, "Mezzotone_"+fixedUUID.String()+".txt")
 	t.Cleanup(func() {
@@ -62,13 +72,15 @@ func TestMezzotoneModelExportPngCreatesValidPNG(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.messageViewPort.SetWidth(120)
+	m.messageViewPort.SetHeight(3)
 	m.renderedImgOutput = renderedImgOutput{
 		renderedRunes: [][]rune{
 			[]rune("rendered-output"),
 		},
 	}
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	_, cmd := m.Update(keyChar("i"))
 	if cmd == nil {
 		t.Fatalf("expected png export command")
 	}
@@ -101,6 +113,8 @@ func TestMezzotoneModelExportGifCreatesValidGIF(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.messageViewPort.SetWidth(120)
+	m.messageViewPort.SetHeight(3)
 	m.renderedGifOutput = renderedGifOutput{
 		renderedRunes: [][][]rune{
 			{[]rune("rendered-output")},
@@ -113,7 +127,7 @@ func TestMezzotoneModelExportGifCreatesValidGIF(t *testing.T) {
 		},
 	}
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	_, cmd := m.Update(keyChar("g"))
 	if cmd == nil {
 		t.Fatalf("expected gif export command")
 	}
@@ -146,6 +160,8 @@ func TestMezzotoneModelExportGifFromAnimationExportsMultipleFrames(t *testing.T)
 	m.currentActiveMenu = renderView
 	m.renderContent = "frame-zero"
 	m.style.leftColumnWidth = 120
+	m.messageViewPort.SetWidth(120)
+	m.messageViewPort.SetHeight(3)
 	m.renderedGifOutput = renderedGifOutput{
 		renderedRunes: [][][]rune{
 			{[]rune("frame-one")},
@@ -161,7 +177,7 @@ func TestMezzotoneModelExportGifFromAnimationExportsMultipleFrames(t *testing.T)
 		},
 	}
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	_, cmd := m.Update(keyChar("g"))
 	if cmd == nil {
 		t.Fatalf("expected gif export command")
 	}
@@ -193,10 +209,12 @@ func TestMezzotoneModelCopyToClipboardWhenUnavailableShowsError(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = "rendered-output"
 	m.style.leftColumnWidth = 120
+	m.messageViewPort.SetWidth(120)
+	m.messageViewPort.SetHeight(3)
 	clipboardOK = false
 	clipboardCommands = nil
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	_, _ = m.Update(keyChar("c"))
 
 	if !strings.Contains(strings.ToLower(m.messageViewPort.View()), "clipboard not available (init failed)") {
 		t.Fatalf("expected clipboard unavailable message, got %q", m.messageViewPort.View())
@@ -213,10 +231,12 @@ func TestMezzotoneModelCopyToClipboardWithEmptyRenderShowsError(t *testing.T) {
 	m.currentActiveMenu = renderView
 	m.renderContent = ""
 	m.style.leftColumnWidth = 120
+	m.messageViewPort.SetWidth(120)
+	m.messageViewPort.SetHeight(3)
 	clipboardOK = false
 	clipboardCommands = nil
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	_, _ = m.Update(keyChar("c"))
 
 	if !strings.Contains(m.messageViewPort.View(), "nothing to copy") {
 		t.Fatalf("expected empty render content message, got %q", m.messageViewPort.View())

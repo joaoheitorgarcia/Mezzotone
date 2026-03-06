@@ -6,7 +6,7 @@ import (
 
 	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -46,5 +46,17 @@ func TestTruncateLinesANSI_ANSIVisibleWidthBounded(t *testing.T) {
 	}
 	if !strings.Contains(got, "…") {
 		t.Fatalf("expected ellipsis in truncated ANSI output, got %q", got)
+	}
+}
+
+func TestTruncateLinesANSI_DoesNotAddEllipsisWithinBounds(t *testing.T) {
+	in := "abcd\nefgh"
+	got := termtext.TruncateLinesANSI(in, 4)
+
+	if got != in {
+		t.Fatalf("expected unchanged content within bounds, got %q", got)
+	}
+	if strings.Contains(got, "…") {
+		t.Fatalf("did not expect ellipsis within bounds, got %q", got)
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/joaoheitorgarcia/Mezzotone/internal/app"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/services"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
 
 	p := tea.NewProgram(app.NewMezzotoneModelWithConfig(app.MezzotoneModelConfig{
 		ExportFontTTFPath: *fontTTF,
-	}), tea.WithAltScreen())
+	}))
 	if _, err := p.Run(); err != nil {
 		_ = services.Logger().Error("Unexpected Error. Unable to recover")
 		fmt.Printf("An unexpected error has occurred.\n")

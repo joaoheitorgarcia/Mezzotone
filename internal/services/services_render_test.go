@@ -10,8 +10,8 @@ import (
 
 	"github.com/joaoheitorgarcia/Mezzotone/internal/services"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 )
 
 func mustRenderOptions(
@@ -204,7 +204,7 @@ func TestImageRuneArrayIntoStringRenderColorAddsANSIForeground(t *testing.T) {
 	in := [][]rune{{'X'}}
 	colors := [][]color.NRGBA{{{R: 255, G: 0, B: 0, A: 255}}}
 
-	lipgloss.SetColorProfile(termenv.TrueColor)
+	lipgloss.Writer.Profile = colorprofile.TrueColor
 
 	plain := services.ImageRuneArrayIntoString(in, colors, false)
 	if plain != "X\n" {

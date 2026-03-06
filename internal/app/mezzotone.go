@@ -19,11 +19,11 @@ import (
 	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
-	"github.com/charmbracelet/bubbles/filepicker"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"golang.design/x/clipboard"
 )
@@ -111,12 +111,12 @@ type messageViewStyle struct {
 }
 
 type styleColors struct {
-	white    lipgloss.Color
-	primary  lipgloss.Color
-	selected lipgloss.Color
-	gray     lipgloss.Color
-	black    lipgloss.Color
-	error    lipgloss.Color
+	white    color.Color
+	primary  color.Color
+	selected color.Color
+	gray     color.Color
+	black    color.Color
+	error    color.Color
 }
 
 var renderSettingsItemsSize int
@@ -265,10 +265,10 @@ func NewMezzotoneModelWithConfig(config MezzotoneModelConfig) *MezzotoneModel {
 	}
 	fp.Styles = windowStyles.filePickerStyle.filePickerActiveStyle
 
-	renderViewPort := viewport.New(0, 0)
-	leftColumn := viewport.New(0, 0)
+	renderViewPort := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
+	leftColumn := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
 
-	messageViewPort := viewport.New(0, 3)
+	messageViewPort := viewport.New(viewport.WithWidth(0), viewport.WithHeight(3))
 
 	model := &MezzotoneModel{
 		filePicker:        fp,
@@ -338,13 +338,13 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renderSettings.SetWidth(m.style.leftColumnWidth)
 		m.renderSettings.SetHeight(renderSettingsItemsSize)
 
-		m.messageViewPort.Width = m.style.leftColumnWidth
+		m.messageViewPort.SetWidth(max(1, m.style.leftColumnWidth-2))
 
-		m.renderView.Height = m.height - m.style.windowMargin
+		m.renderView.SetHeight(m.height - m.style.windowMargin)
 
-		computedFilePickerHeight := m.renderView.Height -
+		computedFilePickerHeight := m.renderView.Height() -
 			(renderSettingsItemsSize + 4) - //renderSettings header and end
-			(m.messageViewPort.Height + 2) - //message render view
+			(m.messageViewPort.Height() + 2) - //message render view
 			(m.style.windowMargin + 3) //inputFile Title
 
 		m.filePicker.SetHeight(computedFilePickerHeight)
@@ -358,7 +358,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.style.isRenderViewFullscreen && msg.String() != "f" && msg.String() != "ctrl+c" {
 			return m, nil
 		}
-		if m.currentActiveMenu == filePickerMenu && m.isQuitting && msg.Type != tea.KeyEsc {
+		if m.currentActiveMenu == filePickerMenu && m.isQuitting && msg.String() != "esc" {
 			m.isQuitting = false
 			m.updateMessageViewPortContent("Select image or gif to convert:", false)
 		}
@@ -713,7 +713,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *MezzotoneModel) View() string {
+func (m *MezzotoneModel) View() tea.View {
 	switch m.currentActiveMenu {
 	case renderView:
 		m.filePicker.Styles = m.style.filePickerStyle.filePickerInactiveStyle
@@ -727,7 +727,9 @@ func (m *MezzotoneModel) View() string {
 	}
 
 	if m.style.isRenderViewFullscreen {
-		return m.style.renderViewStyle.Render(m.renderView.View())
+		v := tea.NewView(m.style.renderViewStyle.Render(m.renderView.View()))
+		v.AltScreen = true
+		return v
 	}
 
 	innerW := m.style.leftColumnWidth - 2
@@ -742,7 +744,9 @@ func (m *MezzotoneModel) View() string {
 
 	renderViewRender := m.style.renderViewStyle.Render(m.renderView.View())
 
-	return lipgloss.JoinHorizontal(lipgloss.Left, lefColumnRender, renderViewRender)
+	v := tea.NewView(lipgloss.JoinHorizontal(lipgloss.Left, lefColumnRender, renderViewRender))
+	v.AltScreen = true
+	return v
 }
 
 func normalizeRenderOptionsForService(settingsValues []ui.SettingItem) (services.RenderOptions, error) {
@@ -824,7 +828,7 @@ func (m *MezzotoneModel) updateMessageViewPortContent(messageViewContent string,
 	m.messageViewPort.SetContent(
 		termtext.TruncateLinesANSI(
 			lipgloss.JoinVertical(lipgloss.Top, messageViewContent, m.style.messageViewStyle.helpStyle.Render("\nPress h to toggle Help. Press esc to Quit.")),
-			m.style.leftColumnWidth,
+			max(1, m.style.leftColumnWidth-2),
 		),
 	)
 }
@@ -992,8 +996,8 @@ func copyTextToClipboard(content string) error {
 
 func (m *MezzotoneModel) toggleRenderViewFullscreen() {
 	if m.style.isRenderViewFullscreen {
-		m.renderView.Width = m.width - m.style.windowMargin
+		m.renderView.SetWidth(m.width - m.style.windowMargin)
 	} else {
-		m.renderView.Width = m.width / 7 * 5
+		m.renderView.SetWidth(m.width / 7 * 5)
 	}
 }

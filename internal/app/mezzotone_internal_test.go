@@ -7,13 +7,13 @@ import (
 	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
-	"github.com/charmbracelet/bubbles/viewport"
+	"charm.land/bubbles/v2/viewport"
 )
 
 func TestUpdateMessageViewPortContent_TruncatesByLeftColumnWidth(t *testing.T) {
 	messageViewContent := "this is a long status line that must be truncated"
 	model := &MezzotoneModel{
-		messageViewPort: viewport.New(8, 3),
+		messageViewPort: viewport.New(viewport.WithWidth(8), viewport.WithHeight(3)),
 		style: styleVariables{
 			leftColumnWidth: 8,
 		},
@@ -21,7 +21,7 @@ func TestUpdateMessageViewPortContent_TruncatesByLeftColumnWidth(t *testing.T) {
 
 	model.updateMessageViewPortContent(messageViewContent, false)
 	view := model.messageViewPort.View()
-	expectedFirstLine := termtext.TruncateLinesANSI(messageViewContent, model.style.leftColumnWidth)
+	expectedFirstLine := termtext.TruncateLinesANSI(messageViewContent, model.style.leftColumnWidth-2)
 
 	if !strings.Contains(view, expectedFirstLine) {
 		t.Fatalf("expected viewport to contain truncated first line %q, got %q", expectedFirstLine, view)

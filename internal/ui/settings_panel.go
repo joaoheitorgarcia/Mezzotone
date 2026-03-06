@@ -7,9 +7,9 @@ import (
 
 	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type SettingType int
@@ -198,7 +198,7 @@ func (m *SettingsPanel) View() string {
 	for i, it := range m.Items {
 		val := it.Value
 		if m.Editing && i == m.cursor {
-			m.input.Width = valueW
+			m.input.SetWidth(valueW)
 			val = m.input.View()
 		}
 

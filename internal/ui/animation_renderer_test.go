@@ -6,8 +6,12 @@ import (
 
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
+
+func press(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
+}
 
 func newAnimationRendererForTests() ui.AnimationRenderer {
 	animationFrames := []ui.AnimationFrame{
@@ -27,13 +31,13 @@ func TestAnimationRenderer_Start_And_Stops_Animation(t *testing.T) {
 	m := newAnimationRendererForTests()
 	m.StartAnimation()
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(press(tea.KeyEnter))
 	if !m.IsAnimationPlaying() {
 		t.Fatalf("expected animation to be played")
 	}
 
 	m.StopAnimation()
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(press(tea.KeyEnter))
 	if m.IsAnimationPlaying() {
 		t.Fatalf("expected animation to be stopped")
 	}
@@ -79,7 +83,7 @@ func TestAnimationRenderer_Stop_Key_Stops_Animation(t *testing.T) {
 	if !m.IsAnimationPlaying() {
 		t.Fatalf("expected animation to be played")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m.Update(press(tea.KeyEsc))
 	if m.IsAnimationPlaying() {
 		t.Fatalf("expected animation to be stopped")
 	}
@@ -93,7 +97,7 @@ func TestAnimationRenderer_Non_Stop_Key_Does_Not_Stop_Animation(t *testing.T) {
 	if !m.IsAnimationPlaying() {
 		t.Fatalf("expected animation to be played")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m.Update(press(tea.KeyBackspace))
 	if !m.IsAnimationPlaying() {
 		t.Fatalf("expected animation to be played")
 	}

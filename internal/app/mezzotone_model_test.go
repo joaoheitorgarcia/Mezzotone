@@ -6,8 +6,20 @@ import (
 
 	"github.com/joaoheitorgarcia/Mezzotone/internal/app"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
+
+func key(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
+}
+
+func keyText(text string) tea.KeyPressMsg {
+	var code rune
+	if len(text) > 0 {
+		code = []rune(text)[0]
+	}
+	return tea.KeyPressMsg(tea.Key{Text: text, Code: code})
+}
 
 func TestNewMezzotoneModelInitReturnsCmd(t *testing.T) {
 	m := app.NewMezzotoneModel()
@@ -26,7 +38,7 @@ func TestMezzotoneModelWindowResizeRendersView(t *testing.T) {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	view := model.View()
+	view := model.View().Content
 	if strings.TrimSpace(view) == "" {
 		t.Fatalf("expected non-empty view after resize")
 	}
@@ -35,7 +47,7 @@ func TestMezzotoneModelWindowResizeRendersView(t *testing.T) {
 func TestMezzotoneModelEscFromFilePickerRequiresDoubleEscToQuit(t *testing.T) {
 	m := app.NewMezzotoneModel()
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd := m.Update(key(tea.KeyEsc))
 	if cmd != nil {
 		t.Fatalf("expected first esc from file picker to not quit")
 	}
@@ -45,7 +57,7 @@ func TestMezzotoneModelEscFromFilePickerRequiresDoubleEscToQuit(t *testing.T) {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	updated, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd = updatedModel.Update(key(tea.KeyEsc))
 	if cmd == nil {
 		t.Fatalf("expected quit command on second esc from file picker")
 	}
@@ -58,7 +70,7 @@ func TestMezzotoneModelEscFromFilePickerRequiresDoubleEscToQuit(t *testing.T) {
 func TestMezzotoneModelEscQuitIsCanceledByOtherKey(t *testing.T) {
 	m := app.NewMezzotoneModel()
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd := m.Update(key(tea.KeyEsc))
 	if cmd != nil {
 		t.Fatalf("expected first esc from file picker to not quit")
 	}
@@ -68,7 +80,7 @@ func TestMezzotoneModelEscQuitIsCanceledByOtherKey(t *testing.T) {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	updated, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	updated, cmd = updatedModel.Update(keyText("j"))
 	if cmd != nil {
 		t.Fatalf("expected non-esc key to not quit")
 	}
@@ -78,7 +90,7 @@ func TestMezzotoneModelEscQuitIsCanceledByOtherKey(t *testing.T) {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	updated, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	updated, cmd = updatedModel.Update(key(tea.KeyEsc))
 	if cmd != nil {
 		t.Fatalf("expected esc after reset to not quit")
 	}
@@ -88,7 +100,7 @@ func TestMezzotoneModelEscQuitIsCanceledByOtherKey(t *testing.T) {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	_, cmd = updatedModel.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd = updatedModel.Update(key(tea.KeyEsc))
 	if cmd == nil {
 		t.Fatalf("expected second esc after reset to quit")
 	}
@@ -102,24 +114,24 @@ func TestMezzotoneModelHelpToggleRendersAndHidesHelp(t *testing.T) {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	updated, _ = model.Update(keyText("h"))
 	model, ok = updated.(*app.MezzotoneModel)
 	if !ok {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	helpView := model.View()
+	helpView := model.View().Content
 	if !strings.Contains(helpView, "CONTROLS") {
 		t.Fatalf("expected help overlay to render after pressing h")
 	}
 
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'h'}})
+	updated, _ = model.Update(keyText("h"))
 	model, ok = updated.(*app.MezzotoneModel)
 	if !ok {
 		t.Fatalf("expected updated model type *app.MezzotoneModel")
 	}
 
-	viewWithoutHelp := model.View()
+	viewWithoutHelp := model.View().Content
 	if strings.Contains(viewWithoutHelp, "CONTROLS") {
 		t.Fatalf("expected help overlay to hide after pressing h again")
 	}

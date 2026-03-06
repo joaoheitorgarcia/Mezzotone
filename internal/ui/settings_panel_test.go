@@ -5,9 +5,21 @@ import (
 
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
+
+func key(code rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: code})
+}
+
+func keyRunes(text string) tea.KeyPressMsg {
+	var code rune
+	if len(text) > 0 {
+		code = []rune(text)[0]
+	}
+	return tea.KeyPressMsg(tea.Key{Text: text, Code: code})
+}
 
 func newRenderSettingsPanelForTests() ui.SettingsPanel {
 	return ui.NewSettingsPanel(
@@ -32,19 +44,19 @@ func TestSettingsPanelConfirmFlagTracksConfirmRow(t *testing.T) {
 	m := newRenderSettingsPanelForTests()
 	m.SetActive(0)
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m, _ = m.Update(keyRunes("j"))
 	if m.Confirm {
 		t.Fatalf("confirm should be false on setting rows")
 	}
 
 	for range len(m.Items) - 1 {
-		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m, _ = m.Update(keyRunes("j"))
 	}
 	if !m.Confirm {
 		t.Fatalf("confirm should be true on confirm row")
 	}
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m, _ = m.Update(keyRunes("k"))
 	if m.Confirm {
 		t.Fatalf("confirm should be false after leaving confirm row")
 	}
@@ -54,7 +66,7 @@ func TestSettingsPanelEnterStartsEditingForInt(t *testing.T) {
 	m := newRenderSettingsPanelForTests()
 	m.SetActive(0)
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(key(tea.KeyEnter))
 	if !m.Editing {
 		t.Fatalf("expected editing=true after enter on int field")
 	}
@@ -64,7 +76,7 @@ func TestSettingsPanelEnterTogglesBool(t *testing.T) {
 	m := newRenderSettingsPanelForTests()
 	m.SetActive(2)
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(key(tea.KeyEnter))
 	if m.Items[2].Value != "TRUE" {
 		t.Fatalf("expected bool to toggle to TRUE, got %q", m.Items[2].Value)
 	}
@@ -77,17 +89,17 @@ func TestSettingsPanelEnumCyclesWithArrowsAndEnter(t *testing.T) {
 	m := newRenderSettingsPanelForTests()
 	m.SetActive(3)
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m, _ = m.Update(key(tea.KeyRight))
 	if m.Items[3].Value != "UNICODE" {
 		t.Fatalf("expected enum step right to UNICODE, got %q", m.Items[3].Value)
 	}
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(key(tea.KeyEnter))
 	if m.Items[3].Value != "DOTS" {
 		t.Fatalf("expected enter to step enum to DOTS, got %q", m.Items[3].Value)
 	}
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m, _ = m.Update(key(tea.KeyLeft))
 	if m.Items[3].Value != "UNICODE" {
 		t.Fatalf("expected enum step left to UNICODE, got %q", m.Items[3].Value)
 	}
@@ -98,11 +110,11 @@ func TestSettingsPanelIntEditSaveAndCancel(t *testing.T) {
 	m.SetActive(0)
 
 	// Start editing int field, replace value, and save.
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("12")})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(key(tea.KeyEnter))
+	m, _ = m.Update(key(tea.KeyBackspace))
+	m, _ = m.Update(key(tea.KeyBackspace))
+	m, _ = m.Update(keyRunes("12"))
+	m, _ = m.Update(key(tea.KeyEnter))
 
 	if m.Items[0].Value != "12" {
 		t.Fatalf("expected saved int value 12, got %q", m.Items[0].Value)
@@ -112,10 +124,10 @@ func TestSettingsPanelIntEditSaveAndCancel(t *testing.T) {
 	}
 
 	// Enter edit again, modify, cancel with esc, value must remain unchanged.
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m, _ = m.Update(key(tea.KeyEnter))
+	m, _ = m.Update(key(tea.KeyBackspace))
+	m, _ = m.Update(keyRunes("9"))
+	m, _ = m.Update(key(tea.KeyEsc))
 
 	if m.Items[0].Value != "12" {
 		t.Fatalf("expected cancel to restore previous value, got %q", m.Items[0].Value)
@@ -126,12 +138,12 @@ func TestSettingsPanelInvalidFloatKeepsEditingAndValue(t *testing.T) {
 	m := newRenderSettingsPanelForTests()
 	m.SetActive(1)
 
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("abc")})
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, _ = m.Update(key(tea.KeyEnter))
+	m, _ = m.Update(key(tea.KeyBackspace))
+	m, _ = m.Update(key(tea.KeyBackspace))
+	m, _ = m.Update(key(tea.KeyBackspace))
+	m, _ = m.Update(keyRunes("abc"))
+	m, _ = m.Update(key(tea.KeyEnter))
 
 	if !m.Editing {
 		t.Fatalf("expected editing to remain true after invalid float input")
