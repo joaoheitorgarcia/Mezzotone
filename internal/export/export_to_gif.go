@@ -135,6 +135,31 @@ func ASCIIFramesToGIF(frames []ASCIIGIFFrame, outPath string, opt ASCIIExportOpt
 		return firstErr
 	}
 
+	//reduce gif size
+	previousFrame := gifFrames[0]
+	for i, frame := range gifFrames {
+		if i == 0 {
+			continue
+		}
+		diffBox := getDiffBounds(previousFrame, frame)
+		if diffBox.Empty() {
+			gifFrames[i] = image.NewPaletted(image.Rect(0, 0, 1, 1), frame.Palette)
+			continue
+		}
+		if diffBox.Dx()*diffBox.Dy() > frame.Rect.Dx()*frame.Rect.Dy() {
+			continue
+		}
+
+		croppedPallete := image.NewPaletted(diffBox, frame.Palette)
+		r := croppedPallete.Rect
+		for y := r.Min.Y; y < r.Max.Y; y++ {
+			srcOff := (y-frame.Rect.Min.Y)*frame.Stride + (r.Min.X - frame.Rect.Min.X)
+			dstOff := (y-croppedPallete.Rect.Min.Y)*croppedPallete.Stride + (r.Min.X - croppedPallete.Rect.Min.X)
+			copy(croppedPallete.Pix[dstOff:dstOff+r.Dx()], frame.Pix[srcOff:srcOff+r.Dx()])
+		}
+		gifFrames[i] = croppedPallete
+	}
+
 	f, err := os.Create(outPath)
 	if err != nil {
 		return err
@@ -145,6 +170,42 @@ func ASCIIFramesToGIF(frames []ASCIIGIFFrame, outPath string, opt ASCIIExportOpt
 		Image: gifFrames,
 		Delay: delays,
 	})
+}
+
+func getDiffBounds(previous, current *image.Paletted) image.Rectangle {
+	rec := previous.Rect
+	minX, maxX, minY, maxY := -1, -1, -1, -1
+
+	for y := rec.Min.Y; y < rec.Max.Y; y++ {
+		previousRow := (y - rec.Min.Y) * previous.Stride
+		currentRow := (y - rec.Min.Y) * previous.Stride
+		for x := rec.Min.X; x < rec.Max.X; x++ {
+			i := x - rec.Min.X
+			if previous.Pix[previousRow+i] != current.Pix[currentRow+i] {
+				if minX == -1 {
+					minX, maxX = x, x
+					minY, maxY = y, y
+				} else {
+					if x < minX {
+						minX = x
+					}
+					if x > maxX {
+						maxX = x
+					}
+					if y < minY {
+						minY = y
+					}
+					if y > maxY {
+						maxY = y
+					}
+				}
+			}
+		}
+	}
+	if maxX == -1 {
+		return image.Rectangle{}
+	}
+	return image.Rect(minX, minY, maxX+1, maxY+1)
 }
 
 type asciiRenderer struct {
