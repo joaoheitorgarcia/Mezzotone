@@ -1,6 +1,6 @@
 module github.com/joaoheitorgarcia/Mezzotone
 
-go 1.25
+go 1.25.0
 
 require (
 	charm.land/bubbles/v2 v2.0.0
@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/google/uuid v1.6.0
 	golang.design/x/clipboard v0.7.1
-	golang.org/x/image v0.35.0
+	golang.org/x/image v0.42.0
 )
 
 require (
@@ -29,7 +29,7 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp/shiny v0.0.0-20250606033433-dcc06ee1d476 // indirect
 	golang.org/x/mobile v0.0.0-20250606033058-a2a15c67f36f // indirect
-	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 )

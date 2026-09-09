@@ -40,24 +40,24 @@ func newRenderSettingsPanelForTests() ui.SettingsPanel {
 	)
 }
 
-func TestSettingsPanelConfirmFlagTracksConfirmRow(t *testing.T) {
+func TestSettingsPanelConfirmSelectionTracksConfirmRow(t *testing.T) {
 	m := newRenderSettingsPanelForTests()
 	m.SetActive(0)
 
 	m, _ = m.Update(keyRunes("j"))
-	if m.Confirm {
+	if m.IsConfirmSelected() {
 		t.Fatalf("confirm should be false on setting rows")
 	}
 
 	for range len(m.Items) - 1 {
 		m, _ = m.Update(keyRunes("j"))
 	}
-	if !m.Confirm {
+	if !m.IsConfirmSelected() {
 		t.Fatalf("confirm should be true on confirm row")
 	}
 
 	m, _ = m.Update(keyRunes("k"))
-	if m.Confirm {
+	if m.IsConfirmSelected() {
 		t.Fatalf("confirm should be false after leaving confirm row")
 	}
 }

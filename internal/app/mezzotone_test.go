@@ -4,9 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/joaoheitorgarcia/Mezzotone/internal/app"
-
 	tea "charm.land/bubbletea/v2"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/app"
 )
 
 func key(code rune) tea.KeyPressMsg {

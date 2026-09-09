@@ -19,6 +19,7 @@ const (
 	TypeFloat
 	TypeBool
 	TypeEnum
+	TypeBlank
 )
 
 type SettingItem struct {
@@ -42,11 +43,10 @@ type SettingsPanel struct {
 	Title string
 	Items []SettingItem
 
-	cursor     int
+	Cursor     int
 	Editing    bool
 	beforeEdit string
 	errMsg     string
-	Confirm    bool
 
 	input         textinput.Model
 	width, height int
@@ -118,23 +118,15 @@ func (m *SettingsPanel) Update(msg tea.Msg) (SettingsPanel, tea.Cmd) {
 
 		switch msg.String() {
 		case "up", "k":
-			if m.cursor > 0 {
-				m.Confirm = false
-				m.cursor--
-			}
-			if m.cursor == len(m.Items) {
-				m.Confirm = true
+			if m.Cursor > 0 {
+				m.Cursor--
 			}
 			m.errMsg = ""
 			return *m, nil
 
 		case "down", "j":
-			if m.cursor < len(m.Items) {
-				m.Confirm = false
-				m.cursor++
-			}
-			if m.cursor == len(m.Items) {
-				m.Confirm = true
+			if m.Cursor < len(m.Items) {
+				m.Cursor++
 			}
 			m.errMsg = ""
 			return *m, nil
@@ -156,7 +148,7 @@ func (m *SettingsPanel) Update(msg tea.Msg) (SettingsPanel, tea.Cmd) {
 
 		case "enter":
 			m.errMsg = ""
-			if m.cursor == len(m.Items) {
+			if m.Cursor == len(m.Items) {
 				return *m, nil
 			}
 			it, ok := m.currentItem()
@@ -197,7 +189,7 @@ func (m *SettingsPanel) View() string {
 
 	for i, it := range m.Items {
 		val := it.Value
-		if m.Editing && i == m.cursor {
+		if m.Editing && i == m.Cursor {
 			m.input.SetWidth(valueW)
 			val = m.input.View()
 		}
@@ -209,7 +201,7 @@ func (m *SettingsPanel) View() string {
 		right := m.Styles.ValueStyle.Width(valueW).Render(rightText)
 
 		row := left + strings.Repeat(" ", gapW) + right
-		if i == m.cursor {
+		if i == m.Cursor {
 			left = lipgloss.NewStyle().MaxWidth(labelW).Width(labelW).Render(leftText)
 			right = lipgloss.NewStyle().Width(valueW).Render(rightText)
 			row = left + strings.Repeat(" ", gapW) + right
@@ -220,7 +212,7 @@ func (m *SettingsPanel) View() string {
 
 	confirmText := termtext.TruncateLinesANSI("CONFIRM", labelW)
 	confirmButton := m.Styles.ConfirmBtnStyle.Width(labelW + valueW).Render(confirmText)
-	if m.cursor == len(m.Items) {
+	if m.Cursor == len(m.Items) {
 		confirmButton = lipgloss.NewStyle().Width(labelW + valueW).Render(confirmText)
 		confirmButton = m.Styles.SelectedStyle.Render(confirmButton)
 	}
@@ -330,11 +322,22 @@ func (m *SettingsPanel) SetHeight(h int) {
 }
 
 func (m *SettingsPanel) ClearActive() {
-	m.cursor = -1
+	m.Cursor = -1
 }
 
 func (m *SettingsPanel) SetActive(i int) {
-	m.cursor = i
+	m.Cursor = i
+}
+
+func (m *SettingsPanel) IsConfirmSelected() bool {
+	return m.Cursor == len(m.Items)
+}
+
+func (m *SettingsPanel) CurrentItem() (SettingItem, bool) {
+	if m.Cursor < 0 || m.Cursor >= len(m.Items) {
+		return SettingItem{}, false
+	}
+	return m.Items[m.Cursor], true
 }
 
 func (m *SettingsPanel) ErrorMessage() string {
@@ -342,8 +345,8 @@ func (m *SettingsPanel) ErrorMessage() string {
 }
 
 func (m *SettingsPanel) currentItem() (*SettingItem, bool) {
-	if m.cursor < 0 || m.cursor >= len(m.Items) {
+	if m.Cursor < 0 || m.Cursor >= len(m.Items) {
 		return nil, false
 	}
-	return &m.Items[m.cursor], true
+	return &m.Items[m.Cursor], true
 }

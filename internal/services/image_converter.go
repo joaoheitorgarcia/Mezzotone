@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"image"
@@ -17,69 +16,6 @@ import (
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 )
-
-// edgeInfo Struct to store edge info from Sobel filter
-type edgeInfo struct {
-	Magnitude float64
-	Angle     float64
-}
-
-type RenderOptions struct {
-	// textSize: roughly controls how many pixels map to one character horizontally.
-	textSize int
-	// fontAspect: terminal characters are typically taller than they are wide, vertical cell size is textSize * fontAspect.
-	fontAspect float64
-	// directionalRender: optional Edge Awareness. Derive edge magnitude/orientation from luminanceGrid and choose glyphs accordingly.
-	directionalRender bool
-	edgeThreshold     float64
-	// reverseChars: invert ramp direction (useful for dark terminals / preference).
-	reverseChars bool
-	// highContrast: optional contrast curve applied after cell luminance averaging.
-	highContrast bool
-	RenderColor  bool
-	runeMode     string
-}
-
-func NewRenderOptions(
-	textSize int,
-	fontAspect float64,
-	directionalRender bool,
-	edgeThreshold float64,
-	reverseChars bool,
-	highContrast bool,
-	renderColor bool,
-	runeMode string,
-) (RenderOptions, error) {
-	availableRuneMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS"}
-	if !slices.Contains(availableRuneMode, runeMode) {
-		return RenderOptions{}, fmt.Errorf("invalid rune mode: %s", runeMode)
-	}
-
-	return RenderOptions{
-		textSize:          textSize,
-		fontAspect:        fontAspect,
-		directionalRender: directionalRender,
-		edgeThreshold:     edgeThreshold,
-		reverseChars:      reverseChars,
-		highContrast:      highContrast,
-		RenderColor:       renderColor,
-		runeMode:          runeMode,
-	}, nil
-}
-
-// Dark to Bright
-const asciiRampDarkToBrightStr = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjtf()1{}[]?_+~<>i!lI;:,^`. "
-const unicodeRampDarkToBrightStr = "█▓▒░■□@&%$#*+=~:;!,\".^`' "
-const dotsRampDarkToBrightStr = "●∙•· "
-const rectanglesRampDarkToBrightStr = "█▓▒░ "
-const barsRampDarkToBrightStr = "█▇▆▅▄▃▂▁ "
-
-// Bright to Dark
-const asciiRampBrightToDarkStr = " .`^,:;Il!i><~+_?][}{1)(ftjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$"
-const unicodeRampBrightToDarkStr = " '`^.\",!;:~=+*#$%&@□■░▒▓█"
-const dotsRampBrightToDarkStr = " ·•∙●"
-const rectanglesRampBrightToDarkStr = " ░▒▓█"
-const barsRampBrightToDarkStr = " ▁▂▃▄▅▆▇█"
 
 func ConvertImageToString(inputImg image.Image, renderOptions RenderOptions) ([][]rune, [][]color.NRGBA, error) {
 	var outputChars [][]rune

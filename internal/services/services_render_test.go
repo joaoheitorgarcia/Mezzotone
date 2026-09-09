@@ -3,11 +3,13 @@ package services_test
 import (
 	"image"
 	"image/color"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/joaoheitorgarcia/Mezzotone/internal/global"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/services"
 
 	"charm.land/lipgloss/v2"
@@ -18,15 +20,19 @@ func mustRenderOptions(
 	t *testing.T,
 	textSize int,
 	fontAspect float64,
+	renderColor bool,
+
 	directional bool,
 	edgeThreshold float64,
 	reverse bool,
 	highContrast bool,
-	renderColor bool,
 	runeMode string,
+
+	density float64,
+	dithering bool,
 ) services.RenderOptions {
 	t.Helper()
-	opts, err := services.NewRenderOptions(textSize, fontAspect, directional, edgeThreshold, reverse, highContrast, renderColor, runeMode)
+	opts, err := services.NewRenderOptions(global.CHARACTER_RAMP, textSize, fontAspect, renderColor, directional, edgeThreshold, reverse, highContrast, runeMode, density, dithering)
 	if err != nil {
 		t.Fatalf("failed creating render options: %v", err)
 	}
@@ -60,15 +66,59 @@ func mustConvertImageToString(t *testing.T, imagePath string, opts services.Rend
 }
 
 func TestNewRenderOptionsRejectsInvalidRuneMode(t *testing.T) {
-	_, err := services.NewRenderOptions(10, 2.3, false, 0.6, false, false, false, "INVALID")
+	_, err := services.NewRenderOptions(global.CHARACTER_RAMP, 10, 2.3, false, false, 0.6, false, false, "INVALID", 0.5, false)
 	if err == nil {
 		t.Fatalf("expected error for invalid rune mode")
 	}
 }
 
+func TestNewRenderOptionsValidatesUnitIntervalOptions(t *testing.T) {
+	validCases := []struct {
+		name          string
+		edgeThreshold float64
+		density       float64
+	}{
+		{name: "lower bounds", edgeThreshold: 0, density: 0},
+		{name: "upper bounds", edgeThreshold: 1, density: 1},
+	}
+
+	for _, tc := range validCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := services.NewRenderOptions(global.CHARACTER_RAMP, 10, 2.3, false, false, tc.edgeThreshold, false, false, global.ASCII, tc.density, false)
+			if err != nil {
+				t.Fatalf("expected valid bounds, got error: %v", err)
+			}
+		})
+	}
+
+	invalidCases := []struct {
+		name          string
+		edgeThreshold float64
+		density       float64
+	}{
+		{name: "edge threshold below lower bound", edgeThreshold: -0.1, density: 0.5},
+		{name: "edge threshold above upper bound", edgeThreshold: 1.1, density: 0.5},
+		{name: "edge threshold NaN", edgeThreshold: math.NaN(), density: 0.5},
+		{name: "edge threshold infinity", edgeThreshold: math.Inf(1), density: 0.5},
+		{name: "density below lower bound", edgeThreshold: 0.5, density: -0.1},
+		{name: "density above upper bound", edgeThreshold: 0.5, density: 1.1},
+		{name: "density NaN", edgeThreshold: 0.5, density: math.NaN()},
+		{name: "density infinity", edgeThreshold: 0.5, density: math.Inf(1)},
+	}
+
+	for _, tc := range invalidCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := services.NewRenderOptions(global.CHARACTER_RAMP, 10, 2.3, false, false, tc.edgeThreshold, false, false, global.ASCII, tc.density, false)
+			if err == nil {
+				t.Fatalf("expected validation error")
+			}
+		})
+	}
+}
+
 func TestConvertImageToStringGeneratedFixtureHasContent(t *testing.T) {
 	imagePath := ensureGeneratedFixture(t)
-	opts := mustRenderOptions(t, 8, 2.0, false, 0.6, false, false, false, "ASCII")
+	opts := mustRenderOptions(t, 8, 2.0, false, false, 0.6, false, false, "ASCII", 0.5, false)
 
 	output := mustConvertImageToString(t, imagePath, opts)
 	if len(output) < 10 {
@@ -78,8 +128,8 @@ func TestConvertImageToStringGeneratedFixtureHasContent(t *testing.T) {
 
 func TestConvertImageToStringDifferentRuneModesProduceDifferentOutput(t *testing.T) {
 	imagePath := ensureGeneratedFixture(t)
-	ascii := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, 0.6, false, false, false, "ASCII"))
-	dots := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, 0.6, false, false, false, "DOTS"))
+	ascii := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, false, 0.6, false, false, "ASCII", 0.5, false))
+	dots := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, false, 0.6, false, false, "DOTS", 0.5, false))
 
 	if ascii == dots {
 		t.Fatalf("expected ASCII and DOTS outputs to differ")
@@ -88,8 +138,8 @@ func TestConvertImageToStringDifferentRuneModesProduceDifferentOutput(t *testing
 
 func TestConvertImageToStringReverseCharsChangesOutput(t *testing.T) {
 	imagePath := ensureGeneratedFixture(t)
-	normal := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, 0.6, false, false, false, "ASCII"))
-	reversed := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, 0.6, true, false, false, "ASCII"))
+	normal := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, false, 0.6, false, false, "ASCII", 0.5, false))
+	reversed := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, false, 0.6, true, false, "ASCII", 0.5, false))
 
 	if normal == reversed {
 		t.Fatalf("expected reverse chars option to change output")
@@ -98,8 +148,8 @@ func TestConvertImageToStringReverseCharsChangesOutput(t *testing.T) {
 
 func TestConvertImageToStringDirectionalRenderChangesOutput(t *testing.T) {
 	imagePath := ensureGeneratedFixture(t)
-	plain := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, 0.6, false, false, false, "ASCII"))
-	directional := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, true, 0.4, false, false, false, "ASCII"))
+	plain := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, false, 0.6, false, false, "ASCII", 0.5, false))
+	directional := mustConvertImageToString(t, imagePath, mustRenderOptions(t, 8, 2.0, false, true, 0.4, false, false, "ASCII", 0.5, false))
 
 	if plain == directional {
 		t.Fatalf("expected directional render to change output")
@@ -116,13 +166,13 @@ func TestConvertImageToStringOptionVariantsChangeOutput(t *testing.T) {
 	}{
 		{
 			name: "high contrast toggled",
-			a:    mustRenderOptions(t, 8, 2.0, false, 0.6, false, false, false, "ASCII"),
-			b:    mustRenderOptions(t, 8, 2.0, false, 0.6, false, true, false, "ASCII"),
+			a:    mustRenderOptions(t, 8, 2.0, false, false, 0.6, false, false, "ASCII", 0.5, false),
+			b:    mustRenderOptions(t, 8, 2.0, true, false, 0.6, false, false, "ASCII", 0.5, false),
 		},
 		{
 			name: "edge threshold changed under directional mode",
-			a:    mustRenderOptions(t, 8, 2.0, true, 0.2, false, false, false, "ASCII"),
-			b:    mustRenderOptions(t, 8, 2.0, true, 0.9, false, false, false, "ASCII"),
+			a:    mustRenderOptions(t, 8, 2.0, false, true, 0.2, false, false, "ASCII", 0.5, false),
+			b:    mustRenderOptions(t, 8, 2.0, false, true, 0.9, false, false, "ASCII", 0.5, false),
 		},
 	}
 
@@ -183,7 +233,7 @@ func TestConvertImageToStringRenderColorBuildsAverageColorGrid(t *testing.T) {
 		}
 	}
 
-	opts := mustRenderOptions(t, 8, 2.0, false, 0.6, false, false, true, "ASCII")
+	opts := mustRenderOptions(t, 8, 2.0, true, false, 0.6, false, true, "ASCII", 0.5, false)
 	runes, colors, err := services.ConvertImageToString(img, opts)
 	if err != nil {
 		t.Fatalf("conversion failed: %v", err)

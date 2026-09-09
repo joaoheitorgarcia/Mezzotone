@@ -4,58 +4,31 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
-	"image/gif"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/joaoheitorgarcia/Mezzotone/internal/export"
+	"github.com/joaoheitorgarcia/Mezzotone/internal/global"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/services"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
 	"charm.land/bubbles/v2/filepicker"
-	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 	"golang.design/x/clipboard"
 )
 
-type MezzotoneModel struct {
-	filePicker   filepicker.Model
-	selectedFile string
+type menuPhase int
 
-	renderView      viewport.Model
-	leftColumn      viewport.Model
-	renderSettings  ui.SettingsPanel
-	messageViewPort viewport.Model
-
-	style styleVariables
-
-	currentActiveMenu int
-	helpVisible       bool
-	helpPreviousMenu  int
-	isQuitting        bool
-	renderContent     string
-	exportFontTTFPath string
-
-	renderedImgOutput renderedImgOutput
-	renderedGifOutput renderedGifOutput
-
-	gifAnimation ui.AnimationRenderer
-
-	width  int
-	height int
-
-	err error
-}
+const (
+	filePickerMenu menuPhase = iota
+	renderOptionsMenu
+	renderView
+)
 
 type gifExportDoneMsg struct {
 	outPath string
@@ -132,163 +105,8 @@ var clipboardCommands = [][]string{
 
 var newUUID = uuid.New
 
-const (
-	filePickerMenu = iota
-	renderOptionsMenu
-	renderView
-)
-
 type MezzotoneModelConfig struct {
 	ExportFontTTFPath string
-}
-
-func NewMezzotoneModel() *MezzotoneModel {
-	return NewMezzotoneModelWithConfig(MezzotoneModelConfig{})
-}
-
-func NewMezzotoneModelWithConfig(config MezzotoneModelConfig) *MezzotoneModel {
-	modelStyleColors := styleColors{
-		white:    lipgloss.Color("255"),
-		primary:  lipgloss.Color("99"),
-		selected: lipgloss.Color("213"),
-		gray:     lipgloss.Color("247"),
-		black:    lipgloss.Color("232"),
-		error:    lipgloss.Color("9"),
-	}
-
-	renderViewStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder())
-
-	messageViewStyles := messageViewStyle{
-		renderStyle: lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()),
-		messageStyle: lipgloss.NewStyle().Foreground(modelStyleColors.selected),
-		errorStyle: lipgloss.NewStyle().
-			Foreground(modelStyleColors.error),
-		helpStyle: lipgloss.NewStyle().
-			Faint(true),
-	}
-
-	noFilesFoundString := "Oops. No Files Found."
-	filePickerStyles := filePickerStyle{
-		renderStyle: lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()),
-		filePickerActiveStyle: filepicker.Styles{
-			DisabledCursor:   lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Cursor:           lipgloss.NewStyle().Foreground(modelStyleColors.selected),
-			Symlink:          lipgloss.NewStyle().Foreground(modelStyleColors.primary),
-			Directory:        lipgloss.NewStyle().Foreground(modelStyleColors.primary),
-			File:             lipgloss.NewStyle().Foreground(modelStyleColors.white),
-			DisabledFile:     lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			DisabledSelected: lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Permission:       lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Selected:         lipgloss.NewStyle().Foreground(modelStyleColors.selected).Bold(true).Reverse(true),
-			FileSize:         lipgloss.NewStyle().Foreground(modelStyleColors.gray).Width(7).Align(lipgloss.Right),
-			EmptyDirectory:   lipgloss.NewStyle().Foreground(modelStyleColors.gray).PaddingLeft(2).SetString(noFilesFoundString),
-		},
-		filePickerInactiveStyle: filepicker.Styles{
-			DisabledCursor:   lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Cursor:           lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Symlink:          lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Directory:        lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			File:             lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			DisabledFile:     lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			DisabledSelected: lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Permission:       lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			Selected:         lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			FileSize:         lipgloss.NewStyle().Foreground(modelStyleColors.gray).Width(7).Align(lipgloss.Right),
-			EmptyDirectory:   lipgloss.NewStyle().Foreground(modelStyleColors.gray).PaddingLeft(2).SetString(noFilesFoundString),
-		},
-	}
-
-	renderSettingsStyles := renderSettingsStyle{
-		renderStyle: lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			Padding(1, 2),
-		settingsPanelActiveStyle: ui.RenderSettingsStyles{
-			LabelStyle:      lipgloss.NewStyle().Foreground(modelStyleColors.primary),
-			ValueStyle:      lipgloss.NewStyle().Foreground(modelStyleColors.white),
-			SelectedStyle:   lipgloss.NewStyle().Background(modelStyleColors.selected).Foreground(modelStyleColors.black).Bold(true),
-			TitleStyle:      lipgloss.NewStyle().Foreground(modelStyleColors.selected).Bold(true),
-			ConfirmBtnStyle: lipgloss.NewStyle().Foreground(modelStyleColors.selected).Bold(true),
-		},
-		settingsPanelInactiveStyle: ui.RenderSettingsStyles{
-			LabelStyle:      lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			ValueStyle:      lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			SelectedStyle:   lipgloss.NewStyle().Foreground(modelStyleColors.gray).Reverse(true),
-			TitleStyle:      lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-			ConfirmBtnStyle: lipgloss.NewStyle().Foreground(modelStyleColors.gray),
-		},
-	}
-
-	windowStyles := styleVariables{
-		windowMargin:           2,
-		leftColumnWidth:        10,
-		isRenderViewFullscreen: false,
-
-		styleColors: modelStyleColors,
-
-		renderViewStyle:     renderViewStyle,
-		messageViewStyle:    messageViewStyles,
-		filePickerStyle:     filePickerStyles,
-		renderSettingsStyle: renderSettingsStyles,
-	}
-
-	runeMode := []string{"ASCII", "UNICODE", "DOTS", "RECTANGLES", "BARS"}
-	renderSettingsItems := []ui.SettingItem{
-		{Label: "Text Size", Key: "textSize", Type: ui.TypeInt, Value: "10"},
-		{Label: "Font Aspect", Key: "fontAspect", Type: ui.TypeFloat, Value: "2.3"},
-		{Label: "Directional Render", Key: "directionalRender", Type: ui.TypeBool, Value: "FALSE"},
-		{Label: "Edge Threshold", Key: "edgeThreshold", Type: ui.TypeFloat, Value: "0.6"},
-		{Label: "Reverse Chars", Key: "reverseChars", Type: ui.TypeBool, Value: "TRUE"},
-		{Label: "High Contrast", Key: "highContrast", Type: ui.TypeBool, Value: "TRUE"},
-		{Label: "Render Color", Key: "renderColor", Type: ui.TypeBool, Value: "FALSE"},
-		{Label: "Rune Mode", Key: "runeMode", Type: ui.TypeEnum, Value: "ASCII", Enum: runeMode},
-	}
-	renderSettingsItemsSize = len(renderSettingsItems)
-	renderSettingsModel := ui.NewSettingsPanel("Render Options", renderSettingsItems, windowStyles.renderSettingsStyle.settingsPanelInactiveStyle)
-	renderSettingsModel.ClearActive()
-
-	fp := filepicker.New()
-	fp.AllowedTypes = []string{".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff", ".gif"}
-	fp.CurrentDirectory, _ = os.UserHomeDir()
-	fp.ShowPermissions = false
-	fp.ShowSize = true
-	fp.KeyMap = filepicker.KeyMap{
-		Down:     key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j", "down")),
-		Up:       key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k", "up")),
-		GoToTop:  key.NewBinding(key.WithKeys("K", "pgup"), key.WithHelp("pgup", "page up")),
-		GoToLast: key.NewBinding(key.WithKeys("J", "pgdown"), key.WithHelp("pgdown", "page down")),
-		Back:     key.NewBinding(key.WithKeys("left", "backspace"), key.WithHelp("h", "back")),
-		Open:     key.NewBinding(key.WithKeys("right", "enter"), key.WithHelp("l", "open")),
-		Select:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "select")),
-	}
-	fp.Styles = windowStyles.filePickerStyle.filePickerActiveStyle
-
-	renderViewPort := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
-	leftColumn := viewport.New(viewport.WithWidth(0), viewport.WithHeight(0))
-
-	messageViewPort := viewport.New(viewport.WithWidth(0), viewport.WithHeight(3))
-
-	model := &MezzotoneModel{
-		filePicker:        fp,
-		renderView:        renderViewPort,
-		messageViewPort:   messageViewPort,
-		style:             windowStyles,
-		leftColumn:        leftColumn,
-		renderSettings:    renderSettingsModel,
-		currentActiveMenu: filePickerMenu,
-		helpPreviousMenu:  filePickerMenu,
-		isQuitting:        false,
-		exportFontTTFPath: strings.TrimSpace(config.ExportFontTTFPath),
-	}
-	model.updateMessageViewPortContent("Select image or gif to convert:", false)
-
-	if err := clipboard.Init(); err == nil {
-		clipboardOK = true
-	}
-
-	return model
 }
 
 func (m *MezzotoneModel) Init() tea.Cmd {
@@ -429,7 +247,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					render = m.renderedImgOutput
 				}
-				return m, exportAsciiToPngCmd(outPath, render, exportOptions)
+				return m, exportAsciiToPng(outPath, render, exportOptions)
 			}
 		case "g":
 			if m.currentActiveMenu == renderView {
@@ -467,7 +285,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 
 				m.updateMessageViewPortContent("Exporting gif to "+outPath+" ...", false)
-				return m, exportAsciiToGifCmd(outPath, gifFrames, exportOptions)
+				return m, exportAsciiToGif(outPath, gifFrames, exportOptions)
 			}
 		case "h":
 			if m.currentActiveMenu == renderOptionsMenu && m.renderSettings.Editing {
@@ -515,12 +333,14 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.currentActiveMenu == renderOptionsMenu {
-				if !m.renderSettings.Editing && m.renderSettings.Confirm {
+				//confirm and process render
+				if !m.renderSettings.Editing && m.renderSettings.IsConfirmSelected() {
 					m.incrementCurrentActiveMenu()
 
 					normalizedOptions, err := normalizeRenderOptionsForService(m.renderSettings.Items)
 					if err != nil {
 						m.updateMessageViewPortContent("⚠ "+err.Error(), true)
+						return m, cmd
 					}
 
 					f, err := os.Open(m.selectedFile)
@@ -607,6 +427,20 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, cmd
 				}
+
+				//update render settings items from render Moder
+				currItem, ok := m.renderSettings.CurrentItem()
+				if ok && !m.renderSettings.Editing && currItem.Key == "renderMode" {
+					m.currentRenderMode = global.NextRenderMode(currItem.Value)
+					items, err := renderSettingsItemsFromRenderMode(m.currentRenderMode)
+					m.renderSettings.Items = items
+					if err != nil {
+						m.updateMessageViewPortContent("⚠ "+err.Error(), true)
+						return m, cmd
+					}
+					return m, cmd
+				}
+
 			}
 		case "left":
 			if m.currentActiveMenu == renderView {
@@ -631,7 +465,6 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgdown":
 			if m.currentActiveMenu == renderOptionsMenu {
 				m.renderSettings.SetActive(renderSettingsItemsSize)
-				m.renderSettings.Confirm = true
 				return m, cmd
 			}
 			if m.currentActiveMenu == renderView {
@@ -641,7 +474,6 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "pgup":
 			if m.currentActiveMenu == renderOptionsMenu {
 				m.renderSettings.SetActive(0)
-				m.renderSettings.Confirm = false
 				return m, cmd
 			}
 			if m.currentActiveMenu == renderView {
@@ -684,7 +516,6 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = services.Logger().Info(fmt.Sprintf("Selected File: %s", m.selectedFile))
 
 			m.renderSettings.SetActive(0)
-			m.renderSettings.Confirm = false
 			m.incrementCurrentActiveMenu()
 			return m, cmd
 		}
@@ -696,6 +527,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	}
+
 	if m.currentActiveMenu == renderOptionsMenu {
 		m.renderSettings, cmd = m.renderSettings.Update(msg)
 		if errMsg := m.renderSettings.ErrorMessage(); errMsg != "" {
@@ -705,6 +537,7 @@ func (m *MezzotoneModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
+
 	if m.currentActiveMenu == renderView {
 		m.renderView, cmd = m.renderView.Update(msg)
 		return m, cmd
@@ -747,257 +580,4 @@ func (m *MezzotoneModel) View() tea.View {
 	v := tea.NewView(lipgloss.JoinHorizontal(lipgloss.Left, lefColumnRender, renderViewRender))
 	v.AltScreen = true
 	return v
-}
-
-func normalizeRenderOptionsForService(settingsValues []ui.SettingItem) (services.RenderOptions, error) {
-	var textSize int
-	var fontAspect, edgeThreshold float64
-	var directionalRender, reverseChars, highContrast, renderColor bool
-	var runeMode string
-
-	for _, item := range settingsValues {
-		switch item.Key {
-		case "textSize":
-			textSize, _ = strconv.Atoi(item.Value)
-		case "fontAspect":
-			fontAspect, _ = strconv.ParseFloat(item.Value, 2)
-		case "edgeThreshold":
-			edgeThreshold, _ = strconv.ParseFloat(item.Value, 2)
-		case "directionalRender":
-			directionalRender, _ = strconv.ParseBool(item.Value)
-		case "reverseChars":
-			reverseChars, _ = strconv.ParseBool(item.Value)
-		case "highContrast":
-			highContrast, _ = strconv.ParseBool(item.Value)
-		case "renderColor":
-			renderColor, _ = strconv.ParseBool(item.Value)
-		case "runeMode":
-			runeMode = item.Value
-		}
-	}
-	options, err := services.NewRenderOptions(textSize, fontAspect, directionalRender, edgeThreshold, reverseChars, highContrast, renderColor, runeMode)
-	if err != nil {
-		return services.RenderOptions{}, err
-	}
-	return options, nil
-}
-
-func (m *MezzotoneModel) getRenderColor() bool {
-	for _, item := range m.renderSettings.Items {
-		if item.Key == "renderColor" {
-			value, _ := strconv.ParseBool(item.Value)
-			return value
-		}
-	}
-	return false
-}
-
-func (m *MezzotoneModel) incrementCurrentActiveMenu() {
-	m.currentActiveMenu++
-	m.updateMessageTextOnMenuChange()
-}
-
-func (m *MezzotoneModel) decrementCurrentActiveMenu() {
-	m.currentActiveMenu--
-	m.updateMessageTextOnMenuChange()
-}
-
-func (m *MezzotoneModel) updateMessageTextOnMenuChange() {
-	switch m.currentActiveMenu {
-	case filePickerMenu:
-		m.updateMessageViewPortContent("Select image or gif to convert:", false)
-		break
-	case renderOptionsMenu:
-		m.updateMessageViewPortContent("Edit render options and confirm:", false)
-		break
-	case renderView:
-		m.updateMessageViewPortContent("Press f for fullscreen, see export options with h", false)
-		break
-	}
-}
-
-func (m *MezzotoneModel) updateMessageViewPortContent(messageViewContent string, isError bool) {
-	currentMessage = messageViewContent
-
-	if isError {
-		messageViewContent = m.style.messageViewStyle.errorStyle.Render(messageViewContent)
-	} else {
-		messageViewContent = m.style.messageViewStyle.messageStyle.Render(messageViewContent)
-	}
-
-	m.messageViewPort.SetContent(
-		termtext.TruncateLinesANSI(
-			lipgloss.JoinVertical(lipgloss.Top, messageViewContent, m.style.messageViewStyle.helpStyle.Render("\nPress h to toggle Help. Press esc to Quit.")),
-			max(1, m.style.leftColumnWidth-2),
-		),
-	)
-}
-
-func IsGIF(path string) bool {
-	f, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-
-	_, format, err := image.DecodeConfig(f)
-	if err != nil {
-		return false
-	}
-
-	return format == "gif"
-}
-
-// SplitAnimatedGIF decodes an animated GIF and returns frames plus per-frame delayTimes.
-// GIF frames are often partial/offset “patches”, so playback is simulated by drawing each frame onto a
-// full-size RGBA canvas and then clone the canvas after each draw so frames don’t share the same pixel buffer.
-func SplitAnimatedGIF(r io.Reader) (frames []image.Image, delays []int, err error) {
-	defer func() {
-		if rec := recover(); rec != nil {
-			err = fmt.Errorf("panic while decoding gif: %v", rec)
-		}
-	}()
-
-	g, err := gif.DecodeAll(r)
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(g.Image) == 0 {
-		return nil, nil, fmt.Errorf("gif has no frames")
-	}
-
-	w, h := g.Config.Width, g.Config.Height
-	canvasBounds := image.Rect(0, 0, w, h)
-	canvas := image.NewRGBA(canvasBounds)
-
-	bg := color.RGBA{}
-	if len(g.Image[0].Palette) > 0 && int(g.BackgroundIndex) < len(g.Image[0].Palette) {
-		r0, g0, b0, a0 := g.Image[0].Palette[g.BackgroundIndex].RGBA()
-		bg = color.RGBA{R: uint8(r0 >> 8), G: uint8(g0 >> 8), B: uint8(b0 >> 8), A: uint8(a0 >> 8)}
-	}
-	draw.Draw(canvas, canvas.Bounds(), &image.Uniform{C: bg}, image.Point{}, draw.Src)
-
-	delays = make([]int, 0, len(g.Image))
-
-	var prevCanvas *image.RGBA
-
-	for i, src := range g.Image {
-		// Save canvas BEFORE drawing this frame if disposal asks to restore previous
-		if len(g.Disposal) > i && g.Disposal[i] == gif.DisposalPrevious {
-			prevCanvas = cloneRGBA(canvas)
-		} else {
-			prevCanvas = nil
-		}
-
-		draw.Draw(canvas, src.Bounds(), src, src.Bounds().Min, draw.Over)
-		frames = append(frames, cloneRGBA(canvas))
-
-		if len(g.Delay) > i {
-			delays = append(delays, g.Delay[i])
-		} else {
-			delays = append(delays, 0)
-		}
-
-		// Apply disposal for next frame
-		if len(g.Disposal) > i {
-			switch g.Disposal[i] {
-			case gif.DisposalBackground:
-				draw.Draw(canvas, src.Bounds(), &image.Uniform{C: bg}, image.Point{}, draw.Src)
-			case gif.DisposalPrevious:
-				if prevCanvas != nil {
-					canvas = prevCanvas
-				}
-			}
-		}
-	}
-
-	return frames, delays, nil
-}
-
-func cloneRGBA(src *image.RGBA) *image.RGBA {
-	dst := image.NewRGBA(src.Bounds())
-	copy(dst.Pix, src.Pix)
-	return dst
-}
-
-func exportAsciiToGifCmd(outPath string, frames []export.ASCIIGIFFrame, exportOptions export.ASCIIExportOptions) tea.Cmd {
-	return func() (msg tea.Msg) {
-		defer func() {
-			if rec := recover(); rec != nil {
-				msg = gifExportDoneMsg{
-					outPath: outPath,
-					err:     fmt.Errorf("gif export panic: %v", rec),
-				}
-			}
-		}()
-
-		if len(frames) == 0 {
-			return gifExportDoneMsg{
-				outPath: outPath,
-				err:     fmt.Errorf("no rendered gif frames available to export"),
-			}
-		}
-
-		err := export.ASCIIFramesToGIF(frames, outPath, exportOptions)
-
-		msg = gifExportDoneMsg{
-			outPath: outPath,
-			err:     err,
-		}
-		return msg
-	}
-}
-
-func exportAsciiToPngCmd(outPath string, imgOutput renderedImgOutput, exportOptions export.ASCIIExportOptions) tea.Cmd {
-	return func() (msg tea.Msg) {
-		defer func() {
-			if rec := recover(); rec != nil {
-				msg = pngExportDoneMsg{
-					outPath: outPath,
-					err:     fmt.Errorf("png export panic: %v", rec),
-				}
-			}
-		}()
-
-		err := export.ASCIIToPNG(imgOutput.renderedRunes, imgOutput.renderedColor, outPath, exportOptions)
-		msg = pngExportDoneMsg{
-			outPath: outPath,
-			err:     err,
-		}
-		return msg
-	}
-}
-
-func copyTextToClipboard(content string) error {
-	cleanContent := content
-	if len(cleanContent) == 0 {
-		return fmt.Errorf("nothing to copy (render output is empty)")
-	}
-
-	if clipboardOK {
-		if changed := clipboardWrite(clipboard.FmtText, []byte(cleanContent)); changed != nil {
-			return nil
-		}
-	}
-
-	for _, command := range clipboardCommands {
-		if len(command) == 0 {
-			continue
-		}
-		cmd := exec.Command(command[0], command[1:]...)
-		cmd.Stdin = strings.NewReader(cleanContent)
-		if err := cmd.Run(); err == nil {
-			return nil
-		}
-	}
-
-	return fmt.Errorf("clipboard not available (init failed)")
-}
-
-func (m *MezzotoneModel) toggleRenderViewFullscreen() {
-	if m.style.isRenderViewFullscreen {
-		m.renderView.SetWidth(m.width - m.style.windowMargin)
-	} else {
-		m.renderView.SetWidth(m.width / 7 * 5)
-	}
 }
