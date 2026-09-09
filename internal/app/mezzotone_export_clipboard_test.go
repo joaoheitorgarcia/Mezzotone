@@ -256,13 +256,13 @@ func TestCopyTextToClipboardKeepsContentAsIs(t *testing.T) {
 
 	var gotFormat clipboard.Format
 	var gotData []byte
-	clipboardWrite = func(format clipboard.Format, data []byte) <-chan struct{} {
+	clipboardWrite = func(format clipboard.Format, data []byte) (<-chan struct{}, error) {
 		gotFormat = format
 		gotData = append([]byte(nil), data...)
 		done := make(chan struct{}, 1)
 		done <- struct{}{}
 		close(done)
-		return done
+		return done, nil
 	}
 
 	colored := "\x1b[38;2;255;0;0mAB\x1b[0m\nC"

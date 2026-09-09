@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -96,7 +97,9 @@ var renderSettingsItemsSize int
 var currentMessage string
 
 var clipboardOK bool
-var clipboardWrite = clipboard.Write
+var clipboardWrite = func(format clipboard.Format, data []byte) (<-chan struct{}, error) {
+	return clipboard.Write(context.Background(), format, data)
+}
 var clipboardCommands = [][]string{
 	{"wl-copy"},
 	{"xclip", "-selection", "clipboard"},

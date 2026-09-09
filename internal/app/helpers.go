@@ -263,7 +263,7 @@ func copyTextToClipboard(content string) error {
 	}
 
 	if clipboardOK {
-		if changed := clipboardWrite(clipboard.FmtText, []byte(cleanContent)); changed != nil {
+		if _, err := clipboardWrite(clipboard.FmtText, []byte(cleanContent)); err == nil {
 			return nil
 		}
 	}
