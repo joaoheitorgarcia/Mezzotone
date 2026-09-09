@@ -1,8 +1,10 @@
 package app
 
 import (
+	"image/color"
 	"os"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/key"
@@ -12,6 +14,65 @@ import (
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 	"golang.design/x/clipboard"
 )
+
+type styleVariables struct {
+	windowMargin           int
+	leftColumnWidth        int
+	isRenderViewFullscreen bool
+
+	styleColors styleColors
+
+	renderViewStyle     lipgloss.Style
+	filePickerStyle     filePickerStyle
+	renderSettingsStyle renderSettingsStyle
+	messageViewStyle    messageViewStyle
+}
+
+type filePickerStyle struct {
+	renderStyle             lipgloss.Style
+	filePickerActiveStyle   filepicker.Styles
+	filePickerInactiveStyle filepicker.Styles
+}
+
+type renderSettingsStyle struct {
+	renderStyle                lipgloss.Style
+	settingsPanelActiveStyle   ui.RenderSettingsStyles
+	settingsPanelInactiveStyle ui.RenderSettingsStyles
+}
+
+type messageViewStyle struct {
+	renderStyle  lipgloss.Style
+	messageStyle lipgloss.Style
+	errorStyle   lipgloss.Style
+	helpStyle    lipgloss.Style
+}
+
+type styleColors struct {
+	white    color.Color
+	primary  color.Color
+	selected color.Color
+	gray     color.Color
+	black    color.Color
+	error    color.Color
+}
+
+type renderedImgOutput struct {
+	renderedRunes [][]rune
+	renderedColor [][]color.NRGBA
+}
+
+type renderedGifOutput struct {
+	renderedRunes [][][]rune
+	renderedColor [][][]color.NRGBA
+	delayTimes    []time.Duration
+}
+
+type MezzotoneModelConfig struct {
+	ExportFontTTFPath string
+}
+
+var renderSettingsItemsSize int
+var renderSettingsItemsMaxSize int
 
 type MezzotoneModel struct {
 	filePicker   filepicker.Model

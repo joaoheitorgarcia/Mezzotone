@@ -21,6 +21,7 @@ const (
 	TypeEnum
 	TypeBlank
 )
+const settingsPanelMinimumLines = 11
 
 type SettingItem struct {
 	Key   string
@@ -208,6 +209,13 @@ func (m *SettingsPanel) View() string {
 			row = m.Styles.SelectedStyle.Render(row)
 		}
 		lines = append(lines, row)
+	}
+
+	//add padding
+	if m.height > 0 {
+		for len(lines) < settingsPanelMinimumLines {
+			lines = append(lines, "")
+		}
 	}
 
 	confirmText := termtext.TruncateLinesANSI("CONFIRM", labelW)

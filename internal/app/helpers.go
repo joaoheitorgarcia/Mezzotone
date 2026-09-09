@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -14,6 +15,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/google/uuid"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/export"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/global"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/services"
@@ -21,6 +23,29 @@ import (
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 	"golang.design/x/clipboard"
 )
+
+type gifExportDoneMsg struct {
+	outPath string
+	err     error
+}
+
+type pngExportDoneMsg struct {
+	outPath string
+	err     error
+}
+
+var clipboardOK bool
+var clipboardWrite = func(format clipboard.Format, data []byte) (<-chan struct{}, error) {
+	return clipboard.Write(context.Background(), format, data)
+}
+var clipboardCommands = [][]string{
+	{"wl-copy"},
+	{"xclip", "-selection", "clipboard"},
+	{"xsel", "--clipboard", "--input"},
+}
+
+var newUUID = uuid.New
+var currentMessage string
 
 func normalizeRenderOptionsForService(settingsValues []ui.SettingItem) (services.RenderOptions, error) {
 	var textSize int

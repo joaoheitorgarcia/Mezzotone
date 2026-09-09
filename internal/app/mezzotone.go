@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -16,11 +15,8 @@ import (
 	"github.com/joaoheitorgarcia/Mezzotone/internal/termtext"
 	"github.com/joaoheitorgarcia/Mezzotone/internal/ui"
 
-	"charm.land/bubbles/v2/filepicker"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/google/uuid"
-	"golang.design/x/clipboard"
 )
 
 type menuPhase int
@@ -30,87 +26,6 @@ const (
 	renderOptionsMenu
 	renderView
 )
-
-type gifExportDoneMsg struct {
-	outPath string
-	err     error
-}
-
-type pngExportDoneMsg struct {
-	outPath string
-	err     error
-}
-
-type renderedImgOutput struct {
-	renderedRunes [][]rune
-	renderedColor [][]color.NRGBA
-}
-
-type renderedGifOutput struct {
-	renderedRunes [][][]rune
-	renderedColor [][][]color.NRGBA
-	delayTimes    []time.Duration
-}
-
-type styleVariables struct {
-	windowMargin           int
-	leftColumnWidth        int
-	isRenderViewFullscreen bool
-
-	styleColors styleColors
-
-	renderViewStyle     lipgloss.Style
-	filePickerStyle     filePickerStyle
-	renderSettingsStyle renderSettingsStyle
-	messageViewStyle    messageViewStyle
-}
-
-type filePickerStyle struct {
-	renderStyle             lipgloss.Style
-	filePickerActiveStyle   filepicker.Styles
-	filePickerInactiveStyle filepicker.Styles
-}
-
-type renderSettingsStyle struct {
-	renderStyle                lipgloss.Style
-	settingsPanelActiveStyle   ui.RenderSettingsStyles
-	settingsPanelInactiveStyle ui.RenderSettingsStyles
-}
-
-type messageViewStyle struct {
-	renderStyle  lipgloss.Style
-	messageStyle lipgloss.Style
-	errorStyle   lipgloss.Style
-	helpStyle    lipgloss.Style
-}
-
-type styleColors struct {
-	white    color.Color
-	primary  color.Color
-	selected color.Color
-	gray     color.Color
-	black    color.Color
-	error    color.Color
-}
-
-var renderSettingsItemsSize int
-var currentMessage string
-
-var clipboardOK bool
-var clipboardWrite = func(format clipboard.Format, data []byte) (<-chan struct{}, error) {
-	return clipboard.Write(context.Background(), format, data)
-}
-var clipboardCommands = [][]string{
-	{"wl-copy"},
-	{"xclip", "-selection", "clipboard"},
-	{"xsel", "--clipboard", "--input"},
-}
-
-var newUUID = uuid.New
-
-type MezzotoneModelConfig struct {
-	ExportFontTTFPath string
-}
 
 func (m *MezzotoneModel) Init() tea.Cmd {
 	return m.filePicker.Init()
